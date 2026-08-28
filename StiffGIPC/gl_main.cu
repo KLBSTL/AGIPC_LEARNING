@@ -27,6 +27,7 @@
 #include <gipc/type_define.h>
 #include <filesystem>
 #include <gipc/statistics.h>
+#include <gipc/runtime_options.h>
 #include <gipc/utils/simple_scene_importer.h>
 #include <Eigen/Geometry>
 #include <thrust/sort.h>
@@ -95,6 +96,7 @@ double         global_offset   = 1.0;
 std::vector<std::string> files;
 std::vector<int>    file_vert_offsets;
 std::vector<int>    file_tet_offsets;
+gipc::RuntimeOptions runtime_options;
 
 void Init_CUDA()
 {
@@ -1744,6 +1746,19 @@ void SpecialKey(GLint key, GLint x, GLint y)
 
 int main(int argc, char** argv)
 {
+    const auto parsed_options = gipc::parse_runtime_options(argc, argv);
+    if(!parsed_options.ok)
+    {
+        std::cerr << parsed_options.error << '\n' << parsed_options.help;
+        return parsed_options.exit_code;
+    }
+    if(parsed_options.show_help)
+    {
+        std::cout << parsed_options.help;
+        return 0;
+    }
+    runtime_options = parsed_options.options;
+
     glutInit(&argc, argv);
     //glutInitDisplayMode(GLUT_DEPTH | GLUT_DOUBLE | GLUT_RGBA);
 

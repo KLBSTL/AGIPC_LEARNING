@@ -122,6 +122,14 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${GIPC_SOURCE} ${GIPC_HANDER
 
 add_subdirectory("MeshProcess")
 
+enable_testing()
+add_executable(gipc_runtime_options_tests
+    tests/runtime_options_tests.cpp
+    StiffGIPC/gipc/runtime_options.cpp)
+target_include_directories(gipc_runtime_options_tests PRIVATE "StiffGIPC/")
+target_compile_features(gipc_runtime_options_tests PRIVATE cxx_std_17)
+add_test(NAME gipc_runtime_options_tests COMMAND gipc_runtime_options_tests)
+
 # Ensure external C libraries use the same dynamic runtime as the executable
 # to avoid LIBCMT/MSVCRT conflicts (MSVC only).
 if(MSVC)

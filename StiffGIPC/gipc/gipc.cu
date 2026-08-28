@@ -2,6 +2,7 @@
 #include <gipc/gipc.h>
 #include <gipc/utils/timer.h>
 #include <gipc/utils/json.h>
+#include <filesystem>
 #include <fstream>
 
 void GIPC::build_gipc_system(device_TetraData& tet)
@@ -18,9 +19,12 @@ void GIPC::build_gipc_system(device_TetraData& tet)
     m_abd_system->parms.kappa = 1e8;
     m_abd_system->parms.dt    = IPC_dt;
 
-    std::string config_dir = GIPC_ASSETS_DIR "scene/abd_system_config.json";
+    std::filesystem::path config_dir =
+        std::filesystem::path(GIPC_ASSETS_DIR) / "scene/abd_system_config.json";
+    if(!std::filesystem::exists(config_dir))
+        config_dir = std::filesystem::current_path() / "Assets/scene/abd_system_config.json";
 
-    gipc::Json json = gipc::Json::parse(std::ifstream(std::string{config_dir}));
+    gipc::Json json = gipc::Json::parse(std::ifstream(config_dir));
     
 
     m_abd_system->parms.motor_speed = json["motor_speed"].get<double>();

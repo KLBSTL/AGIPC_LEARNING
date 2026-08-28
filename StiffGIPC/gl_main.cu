@@ -10,6 +10,9 @@
 #include "GL/freeglut.h"
 #include <fstream>
 #include <iostream>
+#include <chrono>
+#include <cmath>
+#include <limits>
 #include <cuda_runtime.h>
 #include <map>
 // #include "GIPC.cuh"
@@ -683,7 +686,7 @@ void LoadSettings()
     std::ifstream infile;
 
 
-    std::string DEFAULT_CONFIG_FILE = std::string{gipc::assets_dir()} + "scene/parameterSetting.txt";
+    std::string DEFAULT_CONFIG_FILE = assets_dir + "scene/parameterSetting.txt";
 
 
     infile.open(DEFAULT_CONFIG_FILE, std::ifstream::in);
@@ -976,6 +979,31 @@ void set_case5()
     };
 }
 
+void set_case_stiff_bunny_drop()
+{
+    std::cerr << "[headless] bunny_config" << std::endl;
+    ipc.pcg_data.P_type       = 1;
+    linear_system_buff_scale  = 1.5;
+    collision_detection_buff_scale = 2.0;
+
+    gipc::SimpleSceneImporter importer;
+    using Transform = Eigen::Transform<double, 3, Eigen::Affine>;
+    Transform transform = Transform::Identity();
+    transform.translate(Eigen::Vector3d(0.0, -0.70, 0.0));
+    transform.scale(0.20);
+
+    std::cerr << "[headless] bunny_load " << runtime_options.tet_mesh << std::endl;
+    importer.load_geometry(tetMesh,
+                           3,
+                           gipc::BodyType::FEM,
+                           transform.matrix(),
+                           runtime_options.young_modulus,
+                           runtime_options.tet_mesh,
+                           ipc.pcg_data.P_type);
+    std::cerr << "[headless] bunny_loaded vertices=" << tetMesh.vertexNum << std::endl;
+    ipc.relative_dhat = 1e-3;
+}
+
 void set_case6()
 {
     linear_system_buff_scale = 2.0;
@@ -1096,9 +1124,16 @@ void setMAS_partition()
 
 void initScene()
 {
+    std::cerr << "[headless] ensure_metis_dir " << metis_dir << std::endl;
     std::filesystem::exists(metis_dir) || std::filesystem::create_directory(metis_dir);
     ipc.pcg_data.P_type = 1;
 
+    if(runtime_options.scene == "stiff-bunny-drop")
+    {
+        set_case_stiff_bunny_drop();
+    }
+    else
+    {
     int scene_no = 1;
     //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     //!!!!!!!!!!!!!!!!ABD must be loaded before FEM!!!!!!!!!!!!!!!!!!
@@ -1124,13 +1159,17 @@ void initScene()
             set_case6();
             break;
     }
+    }
 
 
+    std::cerr << "[headless] set_mas_partition" << std::endl;
     setMAS_partition();
 
 
+    std::cerr << "[headless] get_surface" << std::endl;
     tetMesh.getSurface();
 
+    std::cerr << "[headless] init_fem" << std::endl;
     initFEM(tetMesh);
     //device_TetraData d_tetMesh;
     d_tetMesh.Malloc_DEVICE_MEM(tetMesh.vertexNum,
@@ -1593,6 +1632,92 @@ void init(void)
     //glEnable(GL_DEPTH_TEST);
 }
 
+void init_headless()
+{
+    std::cerr << "[headless] init_cuda" << std::endl;
+    Init_CUDA();
+    std::cerr << "[headless] load_settings" << std::endl;
+    LoadSettings();
+    ipc.IPC_dt = runtime_options.dt;
+    std::cerr << "[headless] build_system" << std::endl;
+    ipc.build_gipc_system(d_tetMesh);
+    std::cerr << "[headless] init_scene" << std::endl;
+    initScene();
+    std::cerr << "[headless] ready" << std::endl;
+}
+
+extern double totalTime;
+extern double total_Cg_count;
+extern int    totalNT;
+extern int    total_Frames;
+
+int run_headless()
+{
+    const auto wall_begin = std::chrono::steady_clock::now();
+    init_headless();
+    const auto simulation_begin = std::chrono::steady_clock::now();
+
+    for(int frame = 0; frame < runtime_options.frames; ++frame)
+        ipc.IPC_Solver(d_tetMesh);
+
+    CUDA_SAFE_CALL(cudaDeviceSynchronize());
+    CUDA_SAFE_CALL(cudaMemcpy(tetMesh.vertexes.data(),
+                              ipc._vertexes,
+                              ipc.vertexNum * sizeof(double3),
+                              cudaMemcpyDeviceToHost));
+
+    bool   finite_vertices = true;
+    double min_y           = std::numeric_limits<double>::infinity();
+    for(const auto& vertex : tetMesh.vertexes)
+    {
+        finite_vertices = finite_vertices && std::isfinite(vertex.x)
+                          && std::isfinite(vertex.y) && std::isfinite(vertex.z);
+        min_y = std::min(min_y, vertex.y);
+    }
+
+    const auto simulation_end = std::chrono::steady_clock::now();
+    const double wall_time_ms =
+        std::chrono::duration<double, std::milli>(simulation_end - wall_begin).count();
+    const double simulation_wall_time_ms =
+        std::chrono::duration<double, std::milli>(simulation_end - simulation_begin).count();
+
+    gipc::Json metrics;
+    metrics["scene"]            = runtime_options.scene;
+    metrics["solver"]           = runtime_options.solver == gipc::SolverMode::AGIPC
+                                      ? "agipc"
+                                      : "stiffgipc";
+    metrics["tet_mesh"]         = runtime_options.tet_mesh;
+    metrics["frames_requested"] = runtime_options.frames;
+    metrics["frames_completed"] = total_Frames;
+    metrics["fem_vertices"]     = ipc.vertexNum - tetMesh.abd_vertexOffset;
+    metrics["young_modulus"]    = runtime_options.young_modulus;
+    metrics["dt"]               = runtime_options.dt;
+    metrics["wall_time_ms"]     = wall_time_ms;
+    metrics["simulation_wall_time_ms"] = simulation_wall_time_ms;
+    metrics["simulation_time_ms"] = totalTime;
+    metrics["newton_iterations"]  = totalNT;
+    metrics["pcg_iterations"]     = total_Cg_count;
+    metrics["finite_vertices"]    = finite_vertices;
+    metrics["minimum_y"]          = min_y;
+    metrics["ground_penetration"] = std::max(0.0, -1.0 - min_y);
+
+    if(!runtime_options.metrics_path.empty())
+    {
+        const std::filesystem::path metrics_path(runtime_options.metrics_path);
+        if(!metrics_path.parent_path().empty())
+            std::filesystem::create_directories(metrics_path.parent_path());
+        std::ofstream output(metrics_path);
+        output << metrics.dump(2) << '\n';
+        if(!output)
+        {
+            std::cerr << "failed to write metrics: " << metrics_path << '\n';
+            return 3;
+        }
+    }
+    std::cout << metrics.dump() << '\n';
+    return finite_vertices ? 0 : 3;
+}
+
 
 void idle_func()
 {
@@ -1758,6 +1883,35 @@ int main(int argc, char** argv)
         return 0;
     }
     runtime_options = parsed_options.options;
+    if(!std::filesystem::is_directory(assets_dir))
+    {
+        const auto local_assets = std::filesystem::current_path() / "Assets";
+        if(std::filesystem::is_directory(local_assets))
+        {
+            assets_dir = local_assets.string() + "/";
+            metis_dir  = assets_dir + "sorted_mesh/";
+        }
+    }
+    if(runtime_options.scene == "stiff-bunny-drop")
+    {
+        std::filesystem::path mesh_path = runtime_options.tet_mesh.empty()
+                                              ? std::filesystem::path(assets_dir)
+                                                    / "tetMesh/bunny2.msh"
+                                              : std::filesystem::path(runtime_options.tet_mesh);
+        if(mesh_path.is_relative() && !std::filesystem::exists(mesh_path))
+            mesh_path = std::filesystem::path(assets_dir) / "tetMesh" / mesh_path;
+        if(mesh_path.extension() != ".msh" || !std::filesystem::is_regular_file(mesh_path))
+        {
+            std::cerr << "tet mesh must be an existing .msh file: " << mesh_path << '\n';
+            return 2;
+        }
+        runtime_options.tet_mesh = mesh_path.string();
+        if(runtime_options.frames == 0)
+            runtime_options.frames = 30;
+    }
+
+    if(runtime_options.headless)
+        return run_headless();
 
     glutInit(&argc, argv);
     //glutInitDisplayMode(GLUT_DEPTH | GLUT_DOUBLE | GLUT_RGBA);

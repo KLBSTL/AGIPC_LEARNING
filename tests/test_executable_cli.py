@@ -24,6 +24,7 @@ class ExecutableCliTests(unittest.TestCase):
             capture_output=True,
             text=True,
             encoding="utf-8",
+            errors="replace",
             timeout=5,
         )
 
@@ -36,6 +37,19 @@ class ExecutableCliTests(unittest.TestCase):
         result = self.run_cli("--agipc-mapping", "unknown")
         self.assertEqual(result.returncode, 2)
         self.assertIn("mapping", result.stderr.lower())
+
+    def test_missing_tet_mesh_exits_two_before_gpu_startup(self) -> None:
+        result = self.run_cli(
+            "--scene",
+            "stiff-bunny-drop",
+            "--headless",
+            "--frames",
+            "1",
+            "--tet-mesh",
+            "missing-bunny.msh",
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("tet mesh", result.stderr.lower())
 
 
 if __name__ == "__main__":

@@ -1697,6 +1697,15 @@ int run_headless()
     metrics["simulation_time_ms"] = totalTime;
     metrics["newton_iterations"]  = totalNT;
     metrics["pcg_iterations"]     = total_Cg_count;
+    metrics["average_newton_per_frame"] = total_Frames > 0
+                                                ? static_cast<double>(totalNT) / total_Frames
+                                                : 0.0;
+    metrics["average_pcg_per_newton"] = totalNT > 0
+                                              ? total_Cg_count / totalNT
+                                              : 0.0;
+    metrics["average_simulation_ms_per_frame"] = total_Frames > 0
+                                                       ? totalTime / total_Frames
+                                                       : 0.0;
     metrics["finite_vertices"]    = finite_vertices;
     metrics["minimum_y"]          = min_y;
     metrics["ground_penetration"] = std::max(0.0, -1.0 - min_y);

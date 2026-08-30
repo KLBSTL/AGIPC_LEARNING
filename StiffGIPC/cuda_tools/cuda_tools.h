@@ -65,10 +65,17 @@ void LaunchCudaKernal(int gs, int bs, size_t mem, F f, Arguments... args)
     cudaError_t err = cudaGetLastError();
     if(err != cudaSuccess)
     {
-        std::cerr << __FILE__ << "[" << __LINE__ << "]: "
-                  << "CUDA Running API error[" << (int)err
-                  << "]: " << cudaGetErrorString(err) << std::endl;
-        exit(0);
+        size_t free_bytes  = 0;
+        size_t total_bytes = 0;
+        cudaMemGetInfo(&free_bytes, &total_bytes);
+        std::cerr << "[cuda-kernel-launch-failure] kernel=unnamed"
+                  << " grid=" << gs << " block=" << bs
+                  << " dynamic_shared_bytes=" << mem
+                  << " cuda_error=" << static_cast<int>(err) << ":"
+                  << cudaGetErrorString(err)
+                  << " free_bytes=" << free_bytes
+                  << " total_bytes=" << total_bytes << std::endl;
+        std::abort();
     }
 }
 
@@ -98,6 +105,40 @@ void LaunchCudaKernal_default(int total, int bs, size_t mem, F f, Arguments... a
                   << "CUDA Running API error[" << (int)err
                   << "]: " << cudaGetErrorString(err) << std::endl;
         exit(0);
+    }
+}
+
+template <typename F, typename... Arguments>
+void LaunchCudaKernalNamed(const char* label,
+                           int         gs,
+                           int         bs,
+                           size_t      mem,
+                           F           f,
+                           Arguments... args)
+{
+    if(gs < 1)
+        return;
+    if(!mem)
+        f<<<gs, bs>>>(args...);
+    else
+        f<<<gs, bs, mem>>>(args...);
+
+    cudaError_t err = cudaGetLastError();
+    if(err != cudaSuccess)
+    {
+        size_t free_bytes  = 0;
+        size_t total_bytes = 0;
+        cudaError_t memory_info_error = cudaMemGetInfo(&free_bytes, &total_bytes);
+        std::cerr << "[cuda-kernel-launch-failure] kernel=" << label
+                  << " grid=" << gs << " block=" << bs
+                  << " dynamic_shared_bytes=" << mem
+                  << " cuda_error=" << static_cast<int>(err) << ":"
+                  << cudaGetErrorString(err)
+                  << " free_bytes=" << free_bytes
+                  << " total_bytes=" << total_bytes
+                  << " memory_info_error=" << static_cast<int>(memory_info_error)
+                  << ":" << cudaGetErrorString(memory_info_error) << std::endl;
+        std::abort();
     }
 }
 

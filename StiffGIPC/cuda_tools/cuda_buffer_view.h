@@ -3,6 +3,9 @@
 #include "cuda_def.h"
 #include <cuda_runtime.h>
 #include <cinttypes>
+#include <cstdio>
+#include <cstdlib>
+#include <limits>
 #include <vector>
 #include <type_traits>
 #include <Eigen/Core>
@@ -23,6 +26,47 @@ template <typename T> using BufferView = BufferViewT<false, T>;
 template <typename T> using CBufferView = BufferViewT<true, T>;
 
 namespace details {
+inline void checked_buffer_malloc(void**       destination,
+                                  size_t       element_size,
+                                  size_t       element_count,
+                                  const char*  owner)
+{
+    if(element_count > std::numeric_limits<size_t>::max() / element_size)
+    {
+        std::fprintf(stderr,
+                     "[cuda-allocation-failure] owner=%s reason=size_overflow "
+                     "element_size=%zu element_count=%zu\n",
+                     owner,
+                     element_size,
+                     element_count);
+        std::abort();
+    }
+
+    const size_t bytes = element_size * element_count;
+    cudaError_t  error = cudaMalloc(destination, bytes);
+    if(error != cudaSuccess)
+    {
+        size_t free_bytes  = 0;
+        size_t total_bytes = 0;
+        cudaError_t memory_info_error = cudaMemGetInfo(&free_bytes, &total_bytes);
+        std::fprintf(stderr,
+                     "[cuda-allocation-failure] owner=%s bytes=%zu "
+                     "element_size=%zu element_count=%zu cuda_error=%d:%s "
+                     "free_bytes=%zu total_bytes=%zu memory_info_error=%d:%s\n",
+                     owner,
+                     bytes,
+                     element_size,
+                     element_count,
+                     static_cast<int>(error),
+                     cudaGetErrorString(error),
+                     free_bytes,
+                     total_bytes,
+                     static_cast<int>(memory_info_error),
+                     cudaGetErrorString(memory_info_error));
+        std::abort();
+    }
+}
+
 template <typename T>
 __global__ void buffer_fill_kernel(T* data, size_t size, T value)
 {
@@ -279,7 +323,10 @@ class DeviceBuffer
             return;
         }
         T* new_data = nullptr;
-        cudaMalloc(&new_data, new_capacity * sizeof(T));
+        details::checked_buffer_malloc(reinterpret_cast<void**>(&new_data),
+                                       sizeof(T),
+                                       new_capacity,
+                                       "DeviceBuffer::realloc");
         if(m_data)
         {
             cudaMemcpy(new_data, m_data, m_size * sizeof(T), cudaMemcpyDeviceToDevice);
@@ -416,7 +463,13 @@ class DeviceVar
   public:
     using value_type = T;
 
-    DeviceVar() { cudaMalloc(&m_data, sizeof(T)); }
+    DeviceVar()
+    {
+        details::checked_buffer_malloc(reinterpret_cast<void**>(&m_data),
+                                       sizeof(T),
+                                       1,
+                                       "DeviceVar::DeviceVar");
+    }
     DeviceVar(const T& value) : DeviceVar() { operator=(value); }
 
     DeviceVar(const DeviceVar& other) : DeviceVar() { copy_from(other.view()); }

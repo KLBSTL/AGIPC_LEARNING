@@ -2071,7 +2071,8 @@ void MASPreconditioner::PrepareHessian_bcoo(Eigen::Matrix3d* triplet_values,
         int threadNum = BANKSIZE * BANKSIZE;
         int blockNum  = (tripletNum + threadNum - 1) / threadNum;
 
-        LaunchCudaKernal(
+        LaunchCudaKernalNamed(
+            "CEMAS16::prepare_hessian_bcoo_sum_kernel",
             blockNum,
             threadNum,
             0,

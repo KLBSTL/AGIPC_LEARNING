@@ -2059,10 +2059,16 @@ void TraditionalMAS32Preconditioner::PrepareHessian_bcoo(Eigen::Matrix3d* triple
             col_ids);
 
         tripletNum    = totalMapNodes * GPU_MAS_BANKSIZE;
-        int threadNum = GPU_MAS_BANKSIZE * GPU_MAS_BANKSIZE;
+        // The 32x32 logical matrix is reduced independently by row-sized
+        // warps.  Launching all 1024 logical entries in one block requires
+        // more registers than sm_86 provides (82 * 1024 > 65536).  Splitting
+        // it into four 256-thread blocks preserves the warp-local algorithm
+        // while remaining launchable on RTX 30-series GPUs.
+        int threadNum = 256;
         int blockNum  = (tripletNum + threadNum - 1) / threadNum;
 
-        LaunchCudaKernal(
+        LaunchCudaKernalNamed(
+            "TraditionalMAS32::prepare_hessian_bcoo_sum_kernel",
             blockNum,
             threadNum,
             0,

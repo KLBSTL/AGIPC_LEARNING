@@ -48,7 +48,8 @@ void GIPCTripletMatrix::update_hash_value(int fem_offset)
         resize_collision_hash_size(global_collision_triplet_offset);
     }
 
-    LaunchCudaKernal(blockNum,
+    LaunchCudaKernalNamed("GIPCTripletMatrix::_set_hash_value",
+                     blockNum,
                      threadNum,
                      0,
                      _set_hash_value,

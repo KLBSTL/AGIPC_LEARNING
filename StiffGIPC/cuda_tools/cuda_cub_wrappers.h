@@ -1,5 +1,7 @@
 #pragma once
 #include <cuda_runtime.h>
+#include <cstdio>
+#include <cstdlib>
 #include <cub/device/device_reduce.cuh>
 #include <cub/device/device_radix_sort.cuh>
 #include <cub/device/device_scan.cuh>
@@ -22,7 +24,25 @@ namespace details
         {
             if(ptr)
                 cudaFree(ptr);
-            cudaMalloc(&ptr, bytes);
+            cudaError_t error = cudaMalloc(&ptr, bytes);
+            if(error != cudaSuccess)
+            {
+                size_t free_bytes  = 0;
+                size_t total_bytes = 0;
+                cudaError_t memory_info_error = cudaMemGetInfo(&free_bytes, &total_bytes);
+                std::fprintf(stderr,
+                             "[cuda-allocation-failure] owner=CUB::get_temp_buffer "
+                             "bytes=%zu cuda_error=%d:%s free_bytes=%zu "
+                             "total_bytes=%zu memory_info_error=%d:%s\n",
+                             bytes,
+                             static_cast<int>(error),
+                             cudaGetErrorString(error),
+                             free_bytes,
+                             total_bytes,
+                             static_cast<int>(memory_info_error),
+                             cudaGetErrorString(memory_info_error));
+                std::abort();
+            }
             capacity = bytes;
         }
         return ptr;

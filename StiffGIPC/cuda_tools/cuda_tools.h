@@ -7,6 +7,8 @@
 //
 
 #pragma once
+#ifndef GIPC_CUDA_TOOLS_CUDA_TOOLS_H
+#define GIPC_CUDA_TOOLS_CUDA_TOOLS_H
 #include <cuda_runtime.h>
 #include <iostream>
 #include<vector>
@@ -98,3 +100,5 @@ void LaunchCudaKernal_default(int total, int bs, size_t mem, F f, Arguments... a
         exit(0);
     }
 }
+
+#endif

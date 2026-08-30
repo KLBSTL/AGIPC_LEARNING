@@ -1,10 +1,10 @@
 {
   "run_id": "fig12_gpu_mas32_20260830",
   "status": "COMPLETE_WITH_LIMITATIONS",
-  "limitation": "BLOCKED_CUDA_ALLOCATION",
+  "limitation": "BLOCKED_CUDA_MALLOC",
   "source_commit": "c9debce3fe9b8a20d0adbb896b786d44cd6b46f2",
   "branch": "stiffgipc/c499-performance-reproduction",
-  "executable_sha256": "B38F7623EB681C75B950959F50CC6ED7CE393C6BD7AFBCAF21EF3644F393B3ED",
+  "executable_sha256": "99E6B9C7165D72F533C4B9F0A6EA9D57357668B998372B99D882F780DEA00E71",
   "verification": {
     "release_build": "PASS",
     "runtime_options_tests": "PASS",
@@ -15,12 +15,13 @@
     "gipc_ms": null,
     "srbk_ms": null,
     "speedup": null,
-    "reason": "The minimum Figure 12 proxy reported CUDA OOM before the first linear solve; current evidence cannot distinguish pure capacity from an allocation-size defect."
+    "reason": "Compute Sanitizer confirmed a cudaMalloc failure after MAS32 initialization; the failing later request still needs call-site and byte-size tracing."
   },
   "external_artifacts": {
     "root": "../../../outputs/stiffgipc_performance_reproduction/fig12/p2_gpu_mas32_20260830",
-    "summary_sha256": "BF613280C8E12B581BA54724BD49AC8C16CE5E7AAD92B0555F4BDE4CA57339BB",
+    "summary_sha256": "E79ED31951F2715C970A45EFD061BA6AEE6C04D8CD482740833D157516D9E96E",
     "spmv_selftest_sha256": "D1622A22DCDE6C0D9DF1054BBE60CE2D014E36F18E2AA6BD4B04DCB688A081BC",
-    "last_capacity_log_sha256": "A87E6CC25EAD3CE162DC8935ABF3A771BBAF98B4FF61C91FB9E846B041DBCECE"
+    "last_capacity_log_sha256": "A87E6CC25EAD3CE162DC8935ABF3A771BBAF98B4FF61C91FB9E846B041DBCECE",
+    "compute_sanitizer_log_sha256": "14BD2CD9EC0139B12421648B54DF11A7952A15D4D9C78825155E1C0BD72063D2"
   }
 }

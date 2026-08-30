@@ -2340,6 +2340,12 @@ void TraditionalMAS32Preconditioner::initPreconditioner_Matrix()
     std::cout << "traditional GPU MAS32 hierarchy clusters: "
               << hierarchy_cluster_count << ", matrix workspace MiB: "
               << (matrix_bytes / (1024.0 * 1024.0)) << std::endl;
+    size_t free_bytes_before = 0;
+    size_t total_bytes       = 0;
+    CUDA_SAFE_CALL(cudaMemGetInfo(&free_bytes_before, &total_bytes));
+    std::cout << "traditional GPU MAS32 CUDA memory before matrices MiB: free="
+              << (free_bytes_before / (1024.0 * 1024.0)) << ", total="
+              << (total_bytes / (1024.0 * 1024.0)) << std::endl;
 #ifdef SYME
     CUDA_SAFE_CALL(cudaMalloc((void**)&d_inverseMatMas,
                               matrix_count * sizeof(__GEIGEN__::GPUMas32MatrixSymT)));
@@ -2354,6 +2360,10 @@ void TraditionalMAS32Preconditioner::initPreconditioner_Matrix()
                               matrix_count * sizeof(__GEIGEN__::GPUMas32MatrixSymf)));
     CUDA_SAFE_CALL(cudaMalloc((void**)&d_multiLevelR, totalCluster * sizeof(Eigen::Vector3f)));
     CUDA_SAFE_CALL(cudaMalloc((void**)&d_multiLevelZ, totalCluster * sizeof(Precision_T3)));
+    size_t free_bytes_after = 0;
+    CUDA_SAFE_CALL(cudaMemGetInfo(&free_bytes_after, &total_bytes));
+    std::cout << "traditional GPU MAS32 CUDA memory after matrices MiB: free="
+              << (free_bytes_after / (1024.0 * 1024.0)) << std::endl;
 }
 
 void TraditionalMAS32Preconditioner::FreeMAS()

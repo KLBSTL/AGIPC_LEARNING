@@ -1,10 +1,10 @@
 {
   "run_id": "fig12_gpu_mas32_20260830",
   "status": "COMPLETE_WITH_LIMITATIONS",
-  "limitation": "BLOCKED_CAPACITY",
+  "limitation": "BLOCKED_CUDA_ALLOCATION",
   "source_commit": "c9debce3fe9b8a20d0adbb896b786d44cd6b46f2",
   "branch": "stiffgipc/c499-performance-reproduction",
-  "executable_sha256": "5567965BE97DF6ED2BB677431C931BF49CFA4D77CDEE8875162FBB133A720E72",
+  "executable_sha256": "B38F7623EB681C75B950959F50CC6ED7CE393C6BD7AFBCAF21EF3644F393B3ED",
   "verification": {
     "release_build": "PASS",
     "runtime_options_tests": "PASS",
@@ -15,11 +15,11 @@
     "gipc_ms": null,
     "srbk_ms": null,
     "speedup": null,
-    "reason": "The minimum Figure 12 proxy exhausted RTX 3070 Laptop 8 GB memory before the first linear solve."
+    "reason": "The minimum Figure 12 proxy reported CUDA OOM before the first linear solve; current evidence cannot distinguish pure capacity from an allocation-size defect."
   },
   "external_artifacts": {
     "root": "../../../outputs/stiffgipc_performance_reproduction/fig12/p2_gpu_mas32_20260830",
-    "summary_sha256": "59960B2E78069CAC245136F4847F85A3E8643209D82C3AF60689059FC0F815BE",
+    "summary_sha256": "BF613280C8E12B581BA54724BD49AC8C16CE5E7AAD92B0555F4BDE4CA57339BB",
     "spmv_selftest_sha256": "D1622A22DCDE6C0D9DF1054BBE60CE2D014E36F18E2AA6BD4B04DCB688A081BC",
     "last_capacity_log_sha256": "A87E6CC25EAD3CE162DC8935ABF3A771BBAF98B4FF61C91FB9E846B041DBCECE"
   }

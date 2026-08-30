@@ -37,6 +37,12 @@ void GIPC::build_gipc_system(device_TetraData& tet)
     std::cout << "* Finished building GIPC system." << std::endl;
 }
 
+void GIPC::set_spmv_mode(gipc::SpmvMode mode)
+{
+    CT_ASSERT(m_global_linear_system, "build_gipc_system() must precede set_spmv_mode()");
+    m_global_linear_system->spmv_mode(mode);
+}
+
 void GIPC::init_abd_system()
 {
     m_abd_sim_data->upload();
@@ -66,6 +72,11 @@ void GIPC::create_LinearSystem(device_TetraData& tet)
 
         m_global_linear_system->create<gipc::MAS_Preconditioner>(
             fem, pcg_data.MP, tet.masses, h_cpNum);
+    }
+    else if(pcg_data.P_type == 2)
+    {
+        m_global_linear_system->create<gipc::TraditionalMAS32_Preconditioner>(
+            fem, pcg_data.traditional_mas32, h_cpNum);
     }
     else
     {

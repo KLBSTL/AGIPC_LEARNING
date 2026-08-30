@@ -62,6 +62,9 @@ class GlobalLinearSystem
      */
     gipc::SizeT solve_linear_system();
 
+    void spmv_mode(SpmvMode mode) { m_spmv_mode = mode; }
+    SpmvMode spmv_mode() const { return m_spmv_mode; }
+
     Json               as_json() const;
     GIPCTripletMatrix* gipc_global_triplet = nullptr;
 
@@ -83,6 +86,7 @@ class GlobalLinearSystem
 
     size_t                         reserved_triplet_count = 0;
     Spmv                           m_spmv;
+    SpmvMode                       m_spmv_mode = SpmvMode::SRBK;
     Converter                      m_converter;
     cudatool::DeviceDenseVector<Float> fake_y;
 

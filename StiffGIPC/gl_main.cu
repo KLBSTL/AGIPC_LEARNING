@@ -11,6 +11,7 @@
 #include <fstream>
 #include <iostream>
 #include <chrono>
+#include <algorithm>
 #include <cmath>
 #include <limits>
 #include <cuda_runtime.h>
@@ -31,6 +32,7 @@
 #include <filesystem>
 #include <gipc/statistics.h>
 #include <gipc/runtime_options.h>
+#include <linear_system/utils/spmv.h>
 #include <gipc/utils/simple_scene_importer.h>
 #include <Eigen/Geometry>
 #include <thrust/sort.h>
@@ -100,6 +102,10 @@ std::vector<std::string> files;
 std::vector<int>    file_vert_offsets;
 std::vector<int>    file_tet_offsets;
 gipc::RuntimeOptions runtime_options;
+int figure12_cloth_vertex_count   = 0;
+int figure12_cloth_triangle_count = 0;
+constexpr double figure12_primary_bunny_young_modulus   = 1e7;
+constexpr double figure12_secondary_bunny_young_modulus = 1e4;
 
 void Init_CUDA()
 {
@@ -805,8 +811,8 @@ void set_case1()
 
 void set_case2()
 {
-    ipc.pcg_data.P_type = 1;
     gipc::SimpleSceneImporter importer;
+    collision_detection_buff_scale = runtime_options.figure12_collision_buffer_scale;
     double                    scale           = 0.2;
     double3                   position_offset = make_double3(0, -0.5, 0);
     Eigen::Matrix4d           transform       = Eigen::Matrix4d::Identity();
@@ -814,31 +820,36 @@ void set_case2()
     transform.block<3, 1>(0, 3) =
         -Eigen::Vector3d(position_offset.x, position_offset.y, position_offset.z);
 
-    linear_system_buff_scale = 1.0;
-    double Youngth_Modulus = 1e4;
+    linear_system_buff_scale = runtime_options.figure12_linear_system_buffer_scale;
     std::string mesh0_path      = assets_dir + "tetMesh/bunny2.msh";
+    const auto first_bunny_body_type = runtime_options.body_mode == "hybrid-abd"
+                                           ? gipc::BodyType::ABD
+                                           : gipc::BodyType::FEM;
     importer.load_geometry(tetMesh,
                            3,
-                           gipc::BodyType::ABD,
+                           first_bunny_body_type,
                            transform,
-                           Youngth_Modulus,
+                           figure12_primary_bunny_young_modulus,
                            mesh0_path,
                            ipc.pcg_data.P_type);
 
-    position_offset             = make_double3(0, 0.65, 0);
-    transform                   = Eigen::Matrix4d::Identity();
-    transform.block<3, 3>(0, 0) = Eigen::Matrix3d::Identity() * scale;
-    transform.block<3, 1>(0, 3) =
-        -Eigen::Vector3d(position_offset.x, position_offset.y, position_offset.z);
+    if(runtime_options.figure12_bunny_count == 2)
+    {
+        position_offset             = make_double3(0, 0.65, 0);
+        transform                   = Eigen::Matrix4d::Identity();
+        transform.block<3, 3>(0, 0) = Eigen::Matrix3d::Identity() * scale;
+        transform.block<3, 1>(0, 3) =
+            -Eigen::Vector3d(position_offset.x, position_offset.y, position_offset.z);
 
-    std::string mesh1_path = mesh0_path;
-    importer.load_geometry(tetMesh,
-                           3,
-                           gipc::BodyType::FEM,
-                           transform,
-                           Youngth_Modulus,
-                           mesh1_path,
-                           ipc.pcg_data.P_type);
+        std::string mesh1_path = mesh0_path;
+        importer.load_geometry(tetMesh,
+                               3,
+                               gipc::BodyType::FEM,
+                               transform,
+                               figure12_secondary_bunny_young_modulus,
+                               mesh1_path,
+                               ipc.pcg_data.P_type);
+    }
 
 
     position_offset             = make_double3(0, 0, 0);
@@ -846,15 +857,23 @@ void set_case2()
     transform.block<3, 3>(0, 0) = Eigen::Matrix3d::Identity() * 1.0;
     transform.block<3, 1>(0, 3) =
         -Eigen::Vector3d(position_offset.x, position_offset.y, position_offset.z);
-    std::string mesh2_path = assets_dir + "triMesh/cloth_high.obj";
+    std::string mesh2_path = runtime_options.cloth_mesh.empty()
+                                 ? assets_dir + "triMesh/cloth_high.obj"
+                                 : runtime_options.cloth_mesh;
 
+    const auto cloth_vertex_offset   = tetMesh.vertexes.size();
+    const auto cloth_triangle_offset = tetMesh.triangles.size();
     importer.load_geometry(tetMesh,
                            2,
                            gipc::BodyType::FEM,
                            transform,
-                           1e4,
+                           runtime_options.young_modulus,
                            mesh2_path,
                            ipc.pcg_data.P_type);
+    figure12_cloth_vertex_count =
+        static_cast<int>(tetMesh.vertexes.size() - cloth_vertex_offset);
+    figure12_cloth_triangle_count =
+        static_cast<int>(tetMesh.triangles.size() - cloth_triangle_offset);
 }
 
 void set_case3()
@@ -1122,15 +1141,89 @@ void setMAS_partition()
     }
 }
 
+namespace
+{
+uint32_t expand_morton_10(uint32_t value)
+{
+    value &= 0x000003ffu;
+    value = (value | (value << 16)) & 0x030000FFu;
+    value = (value | (value << 8)) & 0x0300F00Fu;
+    value = (value | (value << 4)) & 0x030C30C3u;
+    value = (value | (value << 2)) & 0x09249249u;
+    return value;
+}
+
+uint32_t morton_code(const double3& p, const double3& lower, const double3& upper)
+{
+    auto quantize = [](double value, double lo, double hi) {
+        const double extent = hi - lo;
+        const double t = extent > 0.0 ? (value - lo) / extent : 0.0;
+        return static_cast<uint32_t>(std::clamp(t, 0.0, 1.0) * 1023.0 + 0.5);
+    };
+    const uint32_t x = expand_morton_10(quantize(p.x, lower.x, upper.x));
+    const uint32_t y = expand_morton_10(quantize(p.y, lower.y, upper.y));
+    const uint32_t z = expand_morton_10(quantize(p.z, lower.z, upper.z));
+    return x | (y << 1) | (z << 2);
+}
+}  // namespace
+
+void set_gpu_mas32_partition()
+{
+    const int fem_offset = tetMesh.abd_vertexOffset;
+    const int fem_count  = static_cast<int>(tetMesh.vertexes.size()) - fem_offset;
+    if(fem_count <= 0)
+        return;
+
+    double3 lower = tetMesh.vertexes[fem_offset];
+    double3 upper = lower;
+    for(int local = 1; local < fem_count; ++local)
+    {
+        const auto& p = tetMesh.vertexes[fem_offset + local];
+        lower.x = std::min(lower.x, p.x);
+        lower.y = std::min(lower.y, p.y);
+        lower.z = std::min(lower.z, p.z);
+        upper.x = std::max(upper.x, p.x);
+        upper.y = std::max(upper.y, p.y);
+        upper.z = std::max(upper.z, p.z);
+    }
+
+    std::vector<int> order(fem_count);
+    for(int i = 0; i < fem_count; ++i)
+        order[i] = i;
+    std::stable_sort(order.begin(), order.end(), [&](int lhs, int rhs) {
+        const uint32_t lhs_code = morton_code(tetMesh.vertexes[fem_offset + lhs], lower, upper);
+        const uint32_t rhs_code = morton_code(tetMesh.vertexes[fem_offset + rhs], lower, upper);
+        return lhs_code == rhs_code ? lhs < rhs : lhs_code < rhs_code;
+    });
+
+    tetMesh.part_offset = (fem_count + GPU_MAS_BANKSIZE - 1) / GPU_MAS_BANKSIZE;
+    tetMesh.partId_map_real.assign(tetMesh.part_offset * GPU_MAS_BANKSIZE, -1);
+    tetMesh.real_map_partId.resize(fem_count);
+    for(int slot = 0; slot < fem_count; ++slot)
+    {
+        const int real = order[slot];
+        tetMesh.partId_map_real[slot] = real;
+        tetMesh.real_map_partId[real] = slot;
+    }
+    std::cout << "traditional GPU MAS32 Morton groups: " << tetMesh.part_offset
+              << ", FEM vertices: " << fem_count << std::endl;
+}
+
 void initScene()
 {
     std::cerr << "[headless] ensure_metis_dir " << metis_dir << std::endl;
     std::filesystem::exists(metis_dir) || std::filesystem::create_directory(metis_dir);
-    ipc.pcg_data.P_type = 1;
+    ipc.pcg_data.P_type = runtime_options.preconditioner == "cemas16"
+                              ? 1
+                              : (runtime_options.preconditioner == "gpu-mas" ? 2 : 0);
 
     if(runtime_options.scene == "stiff-bunny-drop")
     {
         set_case_stiff_bunny_drop();
+    }
+    else if(runtime_options.scene == "paper-fig12-coupling-scaled")
+    {
+        set_case2();
     }
     else
     {
@@ -1163,7 +1256,10 @@ void initScene()
 
 
     std::cerr << "[headless] set_mas_partition" << std::endl;
-    setMAS_partition();
+    if(ipc.pcg_data.P_type == 1)
+        setMAS_partition();
+    else if(ipc.pcg_data.P_type == 2)
+        set_gpu_mas32_partition();
 
 
     std::cerr << "[headless] get_surface" << std::endl;
@@ -1332,7 +1428,7 @@ void initScene()
                               cudaMemcpyHostToDevice));
     ipc.initBVH(d_tetMesh.BoundaryType, d_tetMesh.point_id_to_body_id);
 
-    if(ipc.pcg_data.P_type && true)
+    if(ipc.pcg_data.P_type == 1)
     {
         int neighborListSize = tetMesh.getVertNeighbors();
         ipc.pcg_data.MP.initPreconditioner_Neighbor(ipc.vertexNum - tetMesh.abd_vertexOffset,
@@ -1366,6 +1462,41 @@ void initScene()
                                   cudaMemcpyHostToDevice));
 
         ipc.pcg_data.MP.initPreconditioner_Matrix();
+    }
+    else if(ipc.pcg_data.P_type == 2)
+    {
+        auto& mas32 = ipc.pcg_data.traditional_mas32;
+        int neighborListSize = tetMesh.getVertNeighbors();
+        mas32.initPreconditioner_Neighbor(ipc.vertexNum - tetMesh.abd_vertexOffset,
+                                          tetMesh.abd_vertexOffset,
+                                          neighborListSize,
+                                          ipc._collisonPairs,
+                                          tetMesh.part_offset * GPU_MAS_BANKSIZE);
+
+        mas32.neighborListSize = neighborListSize;
+        CUDA_SAFE_CALL(cudaMemcpy(mas32.d_neighborListInit,
+                                  tetMesh.neighborList.data(),
+                                  neighborListSize * sizeof(unsigned int),
+                                  cudaMemcpyHostToDevice));
+        CUDA_SAFE_CALL(cudaMemcpy(mas32.d_neighborStart,
+                                  tetMesh.neighborStart.data(),
+                                  (ipc.vertexNum - tetMesh.abd_vertexOffset)
+                                      * sizeof(unsigned int),
+                                  cudaMemcpyHostToDevice));
+        CUDA_SAFE_CALL(cudaMemcpy(mas32.d_neighborNumInit,
+                                  tetMesh.neighborNum.data(),
+                                  (ipc.vertexNum - tetMesh.abd_vertexOffset)
+                                      * sizeof(unsigned int),
+                                  cudaMemcpyHostToDevice));
+        CUDA_SAFE_CALL(cudaMemcpy(mas32.d_partId_map_real,
+                                  tetMesh.partId_map_real.data(),
+                                  tetMesh.part_offset * GPU_MAS_BANKSIZE * sizeof(int),
+                                  cudaMemcpyHostToDevice));
+        CUDA_SAFE_CALL(cudaMemcpy(mas32.d_real_map_partId,
+                                  tetMesh.real_map_partId.data(),
+                                  tetMesh.real_map_partId.size() * sizeof(int),
+                                  cudaMemcpyHostToDevice));
+        mas32.initPreconditioner_Matrix();
     }
 
     CUDA_SAFE_CALL(cudaMemcpy(d_tetMesh.rest_vertexes,
@@ -1611,6 +1742,7 @@ void init(void)
     LoadSettings();
 
     ipc.build_gipc_system(d_tetMesh);
+    ipc.set_spmv_mode(runtime_options.spmv);
 
     initScene();
 
@@ -1641,6 +1773,7 @@ void init_headless()
     ipc.IPC_dt = runtime_options.dt;
     std::cerr << "[headless] build_system" << std::endl;
     ipc.build_gipc_system(d_tetMesh);
+    ipc.set_spmv_mode(runtime_options.spmv);
     std::cerr << "[headless] init_scene" << std::endl;
     initScene();
     std::cerr << "[headless] ready" << std::endl;
@@ -1687,9 +1820,49 @@ int run_headless()
                                       ? "agipc"
                                       : "stiffgipc";
     metrics["tet_mesh"]         = runtime_options.tet_mesh;
+    metrics["cloth_mesh"]       = runtime_options.cloth_mesh;
+    metrics["framework"]        = runtime_options.framework;
+    metrics["preconditioner"]   = runtime_options.preconditioner;
+    metrics["spmv"]             = gipc::to_string(runtime_options.spmv);
+    metrics["body_mode"]        = runtime_options.scene == "paper-fig12-coupling-scaled"
+                                        ? runtime_options.body_mode
+                                        : "scene-defined";
     metrics["frames_requested"] = runtime_options.frames;
     metrics["frames_completed"] = total_Frames;
+    metrics["total_vertices"]   = ipc.vertexNum;
+    metrics["abd_vertices"]     = tetMesh.abd_vertexOffset;
     metrics["fem_vertices"]     = ipc.vertexNum - tetMesh.abd_vertexOffset;
+    metrics["total_tetrahedra"] = ipc.tetrahedraNum;
+    metrics["abd_tetrahedra"]   = tetMesh.abd_tetOffset;
+    metrics["fem_tetrahedra"]   = ipc.tetrahedraNum - tetMesh.abd_tetOffset;
+    metrics["surface_faces"]     = ipc.surface_Num;
+    metrics["abd_body_count"]   = ipc.abd_fem_count_info.abd_body_num;
+    metrics["fem_body_count"]   = ipc.abd_fem_count_info.fem_body_num;
+    const auto full_fem_dof_reference = 3 * ipc.vertexNum;
+    const auto linear_system_dof =
+        12 * static_cast<int>(ipc.abd_fem_count_info.abd_body_num)
+        + 3 * (ipc.vertexNum - tetMesh.abd_vertexOffset);
+    metrics["full_fem_dof_reference"] = full_fem_dof_reference;
+    metrics["linear_system_dof"]      = linear_system_dof;
+    metrics["dof_reduction_ratio"] = linear_system_dof > 0
+                                           ? static_cast<double>(full_fem_dof_reference)
+                                                 / linear_system_dof
+                                           : 0.0;
+    if(runtime_options.scene == "paper-fig12-coupling-scaled")
+    {
+        metrics["scene_scale"]     = "REDUCED_SCALE";
+        metrics["figure12_bunny_count"] = runtime_options.figure12_bunny_count;
+        metrics["figure12_collision_buffer_scale"] =
+            runtime_options.figure12_collision_buffer_scale;
+        metrics["figure12_linear_system_buffer_scale"] =
+            runtime_options.figure12_linear_system_buffer_scale;
+        metrics["cloth_vertices"]  = figure12_cloth_vertex_count;
+        metrics["cloth_triangles"] = figure12_cloth_triangle_count;
+        metrics["primary_bunny_young_modulus"] =
+            figure12_primary_bunny_young_modulus;
+        metrics["secondary_bunny_young_modulus"] =
+            figure12_secondary_bunny_young_modulus;
+    }
     metrics["young_modulus"]    = runtime_options.young_modulus;
     metrics["dt"]               = runtime_options.dt;
     metrics["wall_time_ms"]     = wall_time_ms;
@@ -1892,6 +2065,25 @@ int main(int argc, char** argv)
         return 0;
     }
     runtime_options = parsed_options.options;
+    if(runtime_options.spmv_self_test)
+    {
+        Init_CUDA();
+        const auto result = gipc::run_spmv_equivalence_self_test();
+        gipc::Json metrics;
+        metrics["test"] = "spmv_equivalence";
+        metrics["passed"] = result.passed;
+        metrics["block_rows"] = result.block_rows;
+        metrics["triplet_count"] = result.triplet_count;
+        metrics["legacy_reference_max_abs_error"] =
+            result.legacy_reference_max_abs_error;
+        metrics["srbk_reference_max_abs_error"] =
+            result.srbk_reference_max_abs_error;
+        metrics["legacy_srbk_max_abs_error"] = result.legacy_srbk_max_abs_error;
+        metrics["legacy_srbk_max_relative_error"] =
+            result.legacy_srbk_max_relative_error;
+        std::cout << metrics.dump(2) << '\n';
+        return result.passed ? 0 : 3;
+    }
     if(!std::filesystem::is_directory(assets_dir))
     {
         const auto local_assets = std::filesystem::current_path() / "Assets";
@@ -1917,6 +2109,21 @@ int main(int argc, char** argv)
         runtime_options.tet_mesh = mesh_path.string();
         if(runtime_options.frames == 0)
             runtime_options.frames = 30;
+    }
+    else if(runtime_options.scene == "paper-fig12-coupling-scaled")
+    {
+        std::filesystem::path mesh_path = runtime_options.cloth_mesh.empty()
+                                              ? std::filesystem::path(assets_dir)
+                                                    / "triMesh/cloth_high.obj"
+                                              : std::filesystem::path(runtime_options.cloth_mesh);
+        if(mesh_path.is_relative() && !std::filesystem::exists(mesh_path))
+            mesh_path = std::filesystem::path(assets_dir) / "triMesh" / mesh_path;
+        if(mesh_path.extension() != ".obj" || !std::filesystem::is_regular_file(mesh_path))
+        {
+            std::cerr << "cloth mesh must be an existing .obj file: " << mesh_path << '\n';
+            return 2;
+        }
+        runtime_options.cloth_mesh = mesh_path.string();
     }
 
     if(runtime_options.headless)

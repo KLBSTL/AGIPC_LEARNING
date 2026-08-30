@@ -15,6 +15,7 @@ using FloatP = float;
 using Precision_T3 = float3;
 
 #define BANKSIZE 16
+#define GPU_MAS_BANKSIZE 32
 #define DEFAULT_BLOCKSIZE 256
 #define DEFAULT_WARPNUM 16
 
@@ -125,6 +126,23 @@ struct Matrix3x3f
 struct MasMatrixSymf
 {
     Eigen::Matrix3f M[BANKSIZE * (BANKSIZE + 1) / 2];
+};
+
+// Paper-faithful traditional GPU MAS storage.  Keep this independent from the
+// 16-node CEMAS storage so both preconditioners can coexist in one executable.
+struct GPUMas32MatrixT
+{
+    Precision_T m[GPU_MAS_BANKSIZE * 3][GPU_MAS_BANKSIZE * 3];
+};
+
+struct GPUMas32MatrixSymT
+{
+    Eigen::Matrix3d M[GPU_MAS_BANKSIZE * (GPU_MAS_BANKSIZE + 1) / 2];
+};
+
+struct GPUMas32MatrixSymf
+{
+    Eigen::Matrix3f M[GPU_MAS_BANKSIZE * (GPU_MAS_BANKSIZE + 1) / 2];
 };
 
 struct Matrix9x2d

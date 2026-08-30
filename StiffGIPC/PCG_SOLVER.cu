@@ -27,4 +27,8 @@ void PCG_Data::FREE_DEVICE_MEM()
     {
         MP.FreeMAS();
     }
+    else if(P_type == 2)
+    {
+        traditional_mas32.FreeMAS();
+    }
 }

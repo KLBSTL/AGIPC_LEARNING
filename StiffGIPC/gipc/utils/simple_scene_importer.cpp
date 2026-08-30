@@ -66,7 +66,7 @@ void SimpleSceneImporter::load_geometry(tetrahedra_obj&  tetras,
         }
         else if(bodyType == gipc::BodyType::FEM)
         {
-            if(preconditionerType)
+            if(preconditionerType == 1)
             {
                 auto paths = metis_sort(meth_path, Dimensions);
                 tetras.load_tetrahedraMesh(paths[0], transform, YoungthM, bodyType, body_boundary_type);
@@ -80,7 +80,7 @@ void SimpleSceneImporter::load_geometry(tetrahedra_obj&  tetras,
     }
     else if(Dimensions == 2)
     {
-        if(preconditionerType)
+        if(preconditionerType == 1)
         {
             auto paths = metis_sort(meth_path, Dimensions);
             tetras.load_triMesh(paths[0], transform, 0);

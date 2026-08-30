@@ -186,13 +186,27 @@ void GlobalLinearSystem::spmv(Float                         a,
                               cudatool::DenseVectorView<Float>  y)
 {
 
-    m_spmv.warp_reduce_sym_spmv(a,
-                                gipc_global_triplet->block_values(),
-                                gipc_global_triplet->block_row_indices(),
-                                gipc_global_triplet->block_col_indices(),
-                                gipc_global_triplet->h_unique_key_number,
-                                x,
-                                b,
-                                y);
+    if(m_spmv_mode == SpmvMode::Legacy)
+    {
+        m_spmv.legacy_sym_spmv(a,
+                               gipc_global_triplet->block_values(),
+                               gipc_global_triplet->block_row_indices(),
+                               gipc_global_triplet->block_col_indices(),
+                               gipc_global_triplet->h_unique_key_number,
+                               x,
+                               b,
+                               y);
+    }
+    else
+    {
+        m_spmv.warp_reduce_sym_spmv(a,
+                                    gipc_global_triplet->block_values(),
+                                    gipc_global_triplet->block_row_indices(),
+                                    gipc_global_triplet->block_col_indices(),
+                                    gipc_global_triplet->h_unique_key_number,
+                                    x,
+                                    b,
+                                    y);
+    }
 }
 }  // namespace gipc

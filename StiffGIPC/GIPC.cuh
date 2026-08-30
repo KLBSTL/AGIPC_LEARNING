@@ -15,6 +15,7 @@
 
 #include "PCG_SOLVER.cuh"
 #include <gipc/abd_fem_count_info.h>
+#include <gipc/spmv_mode.h>
 namespace gipc
 {
 class ABDSimData;
@@ -142,6 +143,7 @@ class GIPC
     ~GIPC();
     uint64_t getHashCode(double3 p, uint32_t i);
     void     build_gipc_system(device_TetraData& tet);
+    void     set_spmv_mode(gipc::SpmvMode mode);
 
     void MALLOC_DEVICE_MEM();
 

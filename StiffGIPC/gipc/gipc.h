@@ -8,3 +8,4 @@
 #include <linear_system/preconditioner/diag_preconditioner.h>
 #include <linear_system/preconditioner/abd_preconditioner.h>
 #include <linear_system/preconditioner/fem_mas_preconditioner.h>
+#include <linear_system/preconditioner/traditional_mas32_preconditioner.h>

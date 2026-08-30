@@ -11,6 +11,7 @@
 #define _PCG_SOLVER_CUH_
 #include <cuda_runtime.h>
 #include "MASPreconditioner.cuh"
+#include "TraditionalMAS32Preconditioner.cuh"
 
 class PCG_Data
 {
@@ -18,6 +19,7 @@ class PCG_Data
     double*                 squeue;
     double3*                dx;
     MASPreconditioner MP;
+    gpu_mas32::TraditionalMAS32Preconditioner traditional_mas32;
 
     int P_type = 1;
 

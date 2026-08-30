@@ -1,0 +1,26 @@
+{
+  "run_id": "fig12_gpu_mas32_20260830",
+  "status": "COMPLETE_WITH_LIMITATIONS",
+  "limitation": "BLOCKED_CAPACITY",
+  "source_commit": "c9debce3fe9b8a20d0adbb896b786d44cd6b46f2",
+  "branch": "stiffgipc/c499-performance-reproduction",
+  "executable_sha256": "49641E4B7C1ED95F80ECB4D2B645A0FE809D8B871F1C120930356AD49E5691DE",
+  "verification": {
+    "release_build": "PASS",
+    "runtime_options_tests": "PASS",
+    "spmv_self_test": "PASS",
+    "legacy_srbk_max_relative_error": 2.3636254295168464e-16
+  },
+  "performance": {
+    "gipc_ms": null,
+    "srbk_ms": null,
+    "speedup": null,
+    "reason": "The minimum Figure 12 proxy exhausted RTX 3070 Laptop 8 GB memory before the first linear solve."
+  },
+  "external_artifacts": {
+    "root": "../../../outputs/stiffgipc_performance_reproduction/fig12/p2_gpu_mas32_20260830",
+    "summary_sha256": "F9C776AE6BA71996AA6E36F207682E561FC7FD4906ACA2D8B7200296DFA1F7CD",
+    "spmv_selftest_sha256": "D1622A22DCDE6C0D9DF1054BBE60CE2D014E36F18E2AA6BD4B04DCB688A081BC",
+    "last_capacity_log_sha256": "A87E6CC25EAD3CE162DC8935ABF3A771BBAF98B4FF61C91FB9E846B041DBCECE"
+  }
+}

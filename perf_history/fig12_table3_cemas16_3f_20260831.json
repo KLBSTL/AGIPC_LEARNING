@@ -1,0 +1,15 @@
+{
+  "run_id": "srbk_cemas16_fem_3f",
+  "status": "PASS",
+  "source_head": "6c8079a2a33620341f664ac204767df3155d3128",
+  "artifact": "../../../outputs/stiffgipc_performance_reproduction/fig12/table3_chain_20260831/srbk_cemas16_fem_3f/",
+  "time_total_ms": 883.403,
+  "lsolver_ms": 260.029,
+  "newton": 9,
+  "pcg": 187,
+  "linear_system_dof": 165081,
+  "speedup_vs_legacy": 2.0005592011799824,
+  "finite_vertices": true,
+  "ground_penetration": 0.0,
+  "metrics_sha256": "EC329A7AB3060DB5012ED697FAAF24C476E22296A351234BED7E5358EF12358A"
+}

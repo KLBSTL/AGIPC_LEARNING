@@ -1,0 +1,33 @@
+{
+  "run_id": "fig12_post_timer_fix_pair_20260831",
+  "status": "PASS_VALIDATION",
+  "source_commit": "f69fe238a8be9272d4bccf3cdd26211eae8d71c4",
+  "executable_sha256": "74A40B25B741F671240B492F2FAB5852FE458FBD186043AACFACEA9662783DC2",
+  "scope": "One important Figure 12 single-frame GIPC/SRBK pair after MAS32 equivalence and headless timer fixes",
+  "artifact": "../../../outputs/stiffgipc_performance_reproduction/fig12/post_timer_fix_pair_20260831/",
+  "gipc": {
+    "exit_code": 0,
+    "simulation_time_ms": 308.3760986328125,
+    "newton_iterations": 2,
+    "pcg_iterations": 82.0,
+    "finite_vertices": true,
+    "ground_penetration": 0.0
+  },
+  "srbk": {
+    "exit_code": 0,
+    "simulation_time_ms": 297.6802062988281,
+    "newton_iterations": 2,
+    "pcg_iterations": 82.0,
+    "finite_vertices": true,
+    "ground_penetration": 0.0
+  },
+  "simulation_speedup_gipc_over_srbk": 1.0359308147053863,
+  "minimum_y_absolute_difference": 1.3156661751966837e-10,
+  "tests": {
+    "runtime_options": "PASS",
+    "traditional_mas32_hierarchy": "PASS",
+    "spmv_equivalence": "PASS"
+  },
+  "performance_conclusion_allowed": false,
+  "note": "This is a single validation pair, not a repeated formal benchmark. It proves the pre-fix PCG explosion is removed and the end-to-end output contract is restored."
+}

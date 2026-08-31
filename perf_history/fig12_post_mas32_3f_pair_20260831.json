@@ -1,0 +1,29 @@
+{
+  "run_id": "fig12_post_mas32_3f_pair_20260831",
+  "status": "PASS_VALIDATION_NEGATIVE_SHORT_WINDOW",
+  "source_commit": "f69fe238a8be9272d4bccf3cdd26211eae8d71c4",
+  "run_head": "3e64073b9a6d57d7c710dab763427fcc0860f6e4",
+  "executable_sha256": "74A40B25B741F671240B492F2FAB5852FE458FBD186043AACFACEA9662783DC2",
+  "scope": "One Figure 12 proxy GIPC/SRBK pair with three frames; no retry",
+  "artifact": "../../../outputs/stiffgipc_performance_reproduction/fig12/post_mas32_3f_pair_20260831/",
+  "gipc": {
+    "exit_code": 0,
+    "simulation_time_ms": 699.6205139160156,
+    "newton_iterations": 8,
+    "pcg_iterations": 293.0,
+    "finite_vertices": true,
+    "ground_penetration": 0.0
+  },
+  "srbk": {
+    "exit_code": 0,
+    "simulation_time_ms": 714.1385498046875,
+    "newton_iterations": 8,
+    "pcg_iterations": 291.0,
+    "finite_vertices": true,
+    "ground_penetration": 0.0
+  },
+  "simulation_speedup_gipc_over_srbk": 0.9796705612760402,
+  "minimum_y_absolute_difference": 7.511064304029091e-8,
+  "performance_conclusion_allowed": false,
+  "note": "Both runs pass the short correctness and convergence gate. The primary simulation metric is a negative result for SRBK, and the run was not repeated to seek a favorable value."
+}

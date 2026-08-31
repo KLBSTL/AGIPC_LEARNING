@@ -1,0 +1,44 @@
+{
+  "run_id": "fig12_mas32_frozen_diagnostics_20260831",
+  "status": "PASS",
+  "scope": "Figure 12 first frame, first Newton, frozen A/b/M only",
+  "source_base_commit": "66761a2bb55fcc136be4cd016a35d42d3787b22c",
+  "implementation_commit": "7f9e058a75576ab56931cee128ed453a5ab350af",
+  "branch": "stiffgipc/c499-performance-reproduction",
+  "executable_sha256": "109A5749B53F4AAE5C449D6CE285B91FAED52D08F6235D8BA6866D825EC168DE",
+  "root_cause": "Morton reordering reversed some local BCOO row/column orders; the base MAS32 compressed-upper assembly dropped mapped_col < mapped_row blocks instead of storing H transpose.",
+  "before": {
+    "artifact": "../../../outputs/stiffgipc_performance_reproduction/fig12/frozen_linear_20260831_v3/diagnostics.json",
+    "diagnostics_sha256": "2D4C59A66EE6856FFF2539B0EC596CD508E128558327985D281BF54F335990F7",
+    "passed": false,
+    "spmv_relative_error": 1.69303675016021e-16,
+    "local_spd": "563/643",
+    "inverse_spd": "563/643",
+    "legacy_negative_rtz_count": 43,
+    "srbk_negative_rtz_count": 27,
+    "first_residual_divergence_iteration": 10
+  },
+  "after": {
+    "artifact": "../../../outputs/stiffgipc_performance_reproduction/fig12/frozen_linear_20260831_final/diagnostics.json",
+    "diagnostics_sha256": "6F64378F3B90CDEF1A961067541CE5B75AE5542EFCED4910A757194E7B829A96",
+    "passed": true,
+    "spmv_relative_error": 1.68540539136706e-16,
+    "local_spd": "643/643",
+    "inverse_spd": "643/643",
+    "rhs_t_z": 4.96533741106258e-05,
+    "legacy_negative_rtz_count": 0,
+    "srbk_negative_rtz_count": 0,
+    "legacy_iterations": 6,
+    "srbk_iterations": 6,
+    "first_residual_divergence_iteration": -1
+  },
+  "verification": {
+    "release_build": "PASS",
+    "runtime_options_tests": "PASS",
+    "mas32_hierarchy_self_test": "PASS",
+    "spmv_self_test": "PASS",
+    "frozen_linear_gate": "PASS",
+    "end_to_end_benchmark_run": false
+  },
+  "interpretation": "The historical 0.218x end-to-end result is invalid as a standalone SRBK speed claim because it includes a numerically incorrect MAS32 preconditioner."
+}

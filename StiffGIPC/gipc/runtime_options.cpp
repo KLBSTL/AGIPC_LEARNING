@@ -33,6 +33,8 @@ std::string runtime_options_help()
            "  --figure12-collision-buffer-scale <VALUE>\n"
            "  --figure12-linear-system-buffer-scale <VALUE>\n"
            "  --spmv-self-test\n"
+           "  --mas32-self-test\n"
+           "  --frozen-linear-diagnostics <JSON_PATH>\n"
            "  --frames <N>\n"
            "  --young-modulus <VALUE>\n"
            "  --dt <VALUE>\n"
@@ -119,6 +121,10 @@ ParseResult parse_runtime_options(int argc, char** argv)
             }
             else if(argument == "--spmv-self-test")
                 options.spmv_self_test = true;
+            else if(argument == "--mas32-self-test")
+                options.mas32_self_test = true;
+            else if(argument == "--frozen-linear-diagnostics")
+                options.frozen_linear_diagnostics_path = require_value(i, argument);
             else if(argument == "--figure12-bunny-count")
                 options.figure12_bunny_count = std::stoi(require_value(i, argument));
             else if(argument == "--figure12-collision-buffer-scale")
@@ -200,7 +206,6 @@ ParseResult parse_runtime_options(int argc, char** argv)
        || options.figure12_linear_system_buffer_scale > 1.0)
         return invalid(options,
                        "figure12-linear-system-buffer-scale must be in (0, 1]");
-
     if(framework_was_explicit)
     {
         if(options.framework != "gipc" && options.framework != "srbk"
@@ -256,6 +261,11 @@ ParseResult parse_runtime_options(int argc, char** argv)
     {
         options.framework = "custom";
     }
+    if(!options.frozen_linear_diagnostics_path.empty()
+       && (options.scene != "paper-fig12-coupling-scaled"
+           || options.preconditioner != "gpu-mas" || !options.headless))
+        return invalid(options,
+                       "frozen linear diagnostics requires the headless Figure 12 scene with gpu-mas");
     if(frames_were_explicit && options.frames <= 0)
         return invalid(options, "frames must be positive");
     if(options.young_modulus <= 0.0 || options.dt <= 0.0 || options.agipc_threshold <= 0.0)

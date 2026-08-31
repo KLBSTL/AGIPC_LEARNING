@@ -36,4 +36,10 @@ void TraditionalMAS32_Preconditioner::apply(cudatool::CDenseVectorView<Float> r,
 {
     mas.preconditioning((double3*)r.data(), (double3*)z.data());
 }
+
+Json TraditionalMAS32_Preconditioner::numerical_diagnostics(
+    cudatool::CDenseVectorView<Float> r) const
+{
+    return mas.numerical_diagnostics(reinterpret_cast<const double3*>(r.data()));
+}
 }  // namespace gipc

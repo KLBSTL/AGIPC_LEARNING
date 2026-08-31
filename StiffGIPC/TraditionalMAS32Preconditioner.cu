@@ -17,6 +17,7 @@
 #include <bitset>
 #include <fstream>
 #include <iostream>
+#include <limits>
 
 #include <cooperative_groups.h>
 #include <cooperative_groups/reduce.h>
@@ -29,6 +30,198 @@ using namespace std;
 
 namespace gpu_mas32
 {
+
+__global__ void _buildCML0_new(const unsigned int* _neighborStart,
+                               unsigned int*       _neighborNum,
+                               unsigned int*       _neighborList,
+                               unsigned int*       _fineConnectedMsk,
+                               int*                _partId_map_real,
+                               int*                _real_map_partId,
+                               int                 number);
+__global__ void _preparePrefixSumL0_new(int*          _prefixOriginal,
+                                        unsigned int* _fineConnectedMsk,
+                                        int*          _partId_map_real,
+                                        int           vertNum);
+__global__ void _buildLevel1_new(int2*               _levelSize,
+                                 int*                _coarseSpaceTable,
+                                 int*                _goingNext,
+                                 const unsigned int* _fineConnectedMsk,
+                                 const int*          _prefixSumOriginal,
+                                 const int*          _prefixOriginal,
+                                 int*                _partId_map_real,
+                                 int                 number);
+
+HierarchySelfTestResult run_hierarchy_self_test()
+{
+    constexpr int valid_nodes  = GPU_MAS_BANKSIZE + 3;
+    constexpr int padded_nodes = GPU_MAS_BANKSIZE * 2;
+    constexpr int warp_count   = padded_nodes / GPU_MAS_BANKSIZE;
+
+    std::vector<unsigned int> neighbor_start(valid_nodes);
+    std::vector<unsigned int> neighbor_count(valid_nodes);
+    std::vector<unsigned int> neighbor_list;
+    for(int vertex = 0; vertex < valid_nodes; ++vertex)
+    {
+        neighbor_start[vertex] = static_cast<unsigned int>(neighbor_list.size());
+        const int group_begin = vertex < GPU_MAS_BANKSIZE ? 0 : GPU_MAS_BANKSIZE;
+        const int group_end = vertex < GPU_MAS_BANKSIZE ? GPU_MAS_BANKSIZE : valid_nodes;
+        if(vertex > group_begin)
+            neighbor_list.push_back(static_cast<unsigned int>(vertex - 1));
+        if(vertex + 1 < group_end)
+            neighbor_list.push_back(static_cast<unsigned int>(vertex + 1));
+        neighbor_count[vertex] = static_cast<unsigned int>(neighbor_list.size())
+                                 - neighbor_start[vertex];
+    }
+
+    std::vector<int> part_to_real(padded_nodes, -1);
+    std::vector<int> real_to_part(valid_nodes);
+    for(int vertex = 0; vertex < valid_nodes; ++vertex)
+    {
+        part_to_real[vertex] = vertex;
+        real_to_part[vertex] = vertex;
+    }
+
+    unsigned int* d_neighbor_start = nullptr;
+    unsigned int* d_neighbor_count = nullptr;
+    unsigned int* d_neighbor_list  = nullptr;
+    unsigned int* d_fine_mask      = nullptr;
+    int*          d_part_to_real   = nullptr;
+    int*          d_real_to_part   = nullptr;
+    int*          d_prefix         = nullptr;
+    int*          d_prefix_sum     = nullptr;
+    int2*         d_level_size     = nullptr;
+    int*          d_coarse         = nullptr;
+    int*          d_going_next     = nullptr;
+
+    CUDA_SAFE_CALL(cudaMalloc((void**)&d_neighbor_start,
+                              valid_nodes * sizeof(unsigned int)));
+    CUDA_SAFE_CALL(cudaMalloc((void**)&d_neighbor_count,
+                              valid_nodes * sizeof(unsigned int)));
+    CUDA_SAFE_CALL(cudaMalloc((void**)&d_neighbor_list,
+                              neighbor_list.size() * sizeof(unsigned int)));
+    CUDA_SAFE_CALL(cudaMalloc((void**)&d_fine_mask,
+                              valid_nodes * sizeof(unsigned int)));
+    CUDA_SAFE_CALL(cudaMalloc((void**)&d_part_to_real, padded_nodes * sizeof(int)));
+    CUDA_SAFE_CALL(cudaMalloc((void**)&d_real_to_part, valid_nodes * sizeof(int)));
+    CUDA_SAFE_CALL(cudaMalloc((void**)&d_prefix, warp_count * sizeof(int)));
+    CUDA_SAFE_CALL(cudaMalloc((void**)&d_prefix_sum, warp_count * sizeof(int)));
+    CUDA_SAFE_CALL(cudaMalloc((void**)&d_level_size, 2 * sizeof(int2)));
+    CUDA_SAFE_CALL(cudaMalloc((void**)&d_coarse, valid_nodes * sizeof(int)));
+    CUDA_SAFE_CALL(cudaMalloc((void**)&d_going_next, valid_nodes * sizeof(int)));
+
+    CUDA_SAFE_CALL(cudaMemcpy(d_neighbor_start,
+                              neighbor_start.data(),
+                              valid_nodes * sizeof(unsigned int),
+                              cudaMemcpyHostToDevice));
+    CUDA_SAFE_CALL(cudaMemcpy(d_neighbor_count,
+                              neighbor_count.data(),
+                              valid_nodes * sizeof(unsigned int),
+                              cudaMemcpyHostToDevice));
+    CUDA_SAFE_CALL(cudaMemcpy(d_neighbor_list,
+                              neighbor_list.data(),
+                              neighbor_list.size() * sizeof(unsigned int),
+                              cudaMemcpyHostToDevice));
+    CUDA_SAFE_CALL(cudaMemcpy(d_part_to_real,
+                              part_to_real.data(),
+                              padded_nodes * sizeof(int),
+                              cudaMemcpyHostToDevice));
+    CUDA_SAFE_CALL(cudaMemcpy(d_real_to_part,
+                              real_to_part.data(),
+                              valid_nodes * sizeof(int),
+                              cudaMemcpyHostToDevice));
+    CUDA_SAFE_CALL(cudaMemset(d_fine_mask, 0, valid_nodes * sizeof(unsigned int)));
+    CUDA_SAFE_CALL(cudaMemset(d_prefix, 0, warp_count * sizeof(int)));
+    CUDA_SAFE_CALL(cudaMemset(d_prefix_sum, 0, warp_count * sizeof(int)));
+    CUDA_SAFE_CALL(cudaMemset(d_level_size, 0, 2 * sizeof(int2)));
+    CUDA_SAFE_CALL(cudaMemset(d_coarse, 0xff, valid_nodes * sizeof(int)));
+    CUDA_SAFE_CALL(cudaMemset(d_going_next, 0xff, valid_nodes * sizeof(int)));
+
+    constexpr int block_size = DEFAULT_BLOCKSIZE;
+    _buildCML0_new<<<1, block_size>>>(d_neighbor_start,
+                                      d_neighbor_count,
+                                      d_neighbor_list,
+                                      d_fine_mask,
+                                      d_part_to_real,
+                                      d_real_to_part,
+                                      padded_nodes);
+    _preparePrefixSumL0_new<<<1, block_size>>>(
+        d_prefix, d_fine_mask, d_part_to_real, padded_nodes);
+    thrust::exclusive_scan(thrust::device_ptr<int>(d_prefix),
+                           thrust::device_ptr<int>(d_prefix) + warp_count,
+                           thrust::device_ptr<int>(d_prefix_sum));
+    _buildLevel1_new<<<1, GPU_MAS_BANKSIZE * GPU_MAS_BANKSIZE>>>(d_level_size,
+                                                                 d_coarse,
+                                                                 d_going_next,
+                                                                 d_fine_mask,
+                                                                 d_prefix_sum,
+                                                                 d_prefix,
+                                                                 d_part_to_real,
+                                                                 padded_nodes);
+    CUDA_SAFE_CALL(cudaDeviceSynchronize());
+
+    std::vector<unsigned int> fine_mask(valid_nodes);
+    std::vector<int>          coarse(valid_nodes);
+    std::vector<int>          going_next(valid_nodes);
+    std::vector<int>          prefix(warp_count);
+    int2                      level_size{};
+    CUDA_SAFE_CALL(cudaMemcpy(fine_mask.data(),
+                              d_fine_mask,
+                              valid_nodes * sizeof(unsigned int),
+                              cudaMemcpyDeviceToHost));
+    CUDA_SAFE_CALL(cudaMemcpy(coarse.data(),
+                              d_coarse,
+                              valid_nodes * sizeof(int),
+                              cudaMemcpyDeviceToHost));
+    CUDA_SAFE_CALL(cudaMemcpy(going_next.data(),
+                              d_going_next,
+                              valid_nodes * sizeof(int),
+                              cudaMemcpyDeviceToHost));
+    CUDA_SAFE_CALL(cudaMemcpy(prefix.data(),
+                              d_prefix,
+                              warp_count * sizeof(int),
+                              cudaMemcpyDeviceToHost));
+    CUDA_SAFE_CALL(cudaMemcpy(&level_size,
+                              d_level_size + 1,
+                              sizeof(int2),
+                              cudaMemcpyDeviceToHost));
+
+    HierarchySelfTestResult result;
+    result.valid_nodes         = valid_nodes;
+    result.padded_nodes        = padded_nodes;
+    result.expected_components = 2;
+    result.actual_components   = level_size.x;
+    for(int vertex = 0; vertex < valid_nodes; ++vertex)
+    {
+        const bool first_group = vertex < GPU_MAS_BANKSIZE;
+        const unsigned int expected_mask = first_group ? 0xffffffffU : 0x7U;
+        const int expected_coarse = first_group ? 0 : 1;
+        if(fine_mask[vertex] != expected_mask)
+            ++result.fine_mask_mismatches;
+        if(coarse[vertex] != expected_coarse)
+            ++result.coarse_mapping_mismatches;
+        if(going_next[vertex] != padded_nodes + expected_coarse)
+            ++result.going_next_mismatches;
+    }
+    result.passed = prefix[0] == 1 && prefix[1] == 1
+                    && level_size.x == result.expected_components
+                    && level_size.y == padded_nodes
+                    && result.fine_mask_mismatches == 0
+                    && result.coarse_mapping_mismatches == 0
+                    && result.going_next_mismatches == 0;
+
+    CUDA_SAFE_CALL(cudaFree(d_neighbor_start));
+    CUDA_SAFE_CALL(cudaFree(d_neighbor_count));
+    CUDA_SAFE_CALL(cudaFree(d_neighbor_list));
+    CUDA_SAFE_CALL(cudaFree(d_fine_mask));
+    CUDA_SAFE_CALL(cudaFree(d_part_to_real));
+    CUDA_SAFE_CALL(cudaFree(d_real_to_part));
+    CUDA_SAFE_CALL(cudaFree(d_prefix));
+    CUDA_SAFE_CALL(cudaFree(d_prefix_sum));
+    CUDA_SAFE_CALL(cudaFree(d_level_size));
+    CUDA_SAFE_CALL(cudaFree(d_coarse));
+    CUDA_SAFE_CALL(cudaFree(d_going_next));
+    return result;
+}
 
 __global__ void _buildCML0(const unsigned int* _neighborStart,
                            unsigned int*       _neighborNum,
@@ -120,6 +313,7 @@ __global__ void _preparePrefixSumL0(int* _prefixOriginal, unsigned int* _fineCon
     int          warpId      = idx / GPU_MAS_BANKSIZE;
     int          localWarpId = threadIdx.x / GPU_MAS_BANKSIZE;
     int          laneId      = idx % GPU_MAS_BANKSIZE;
+    const unsigned int active_mask = __activemask();
     unsigned int connectMsk  = _fineConnectedMsk[idx];
     //unsigned int connectMsk = cacheMask1;
     __shared__ int unsigned cacheMask[DEFAULT_BLOCKSIZE];
@@ -129,8 +323,9 @@ __global__ void _preparePrefixSumL0(int* _prefixOriginal, unsigned int* _fineCon
         prefixSum[localWarpId] = 0;
     }
     cacheMask[threadIdx.x] = connectMsk;
+    __syncwarp(active_mask);
     unsigned int visited   = (1U << laneId);
-    while(connectMsk != -1)
+    while(connectMsk != 0xffffffffU)
     {
         unsigned int todo = visited ^ connectMsk;
 
@@ -152,6 +347,7 @@ __global__ void _preparePrefixSumL0(int* _prefixOriginal, unsigned int* _fineCon
         atomicAdd(prefixSum + localWarpId, 1);
     }
 
+    __syncwarp(active_mask);
     if(laneId == 0)
     {
         _prefixOriginal[warpId] = prefixSum[localWarpId];
@@ -172,6 +368,7 @@ __global__ void _preparePrefixSumL0_new(int*          _prefixOriginal,
     int laneId      = tdx % GPU_MAS_BANKSIZE;
 
     int idx = _partId_map_real[tdx];
+    const unsigned int active_mask = __ballot_sync(__activemask(), idx >= 0);
 
 
     //unsigned int connectMsk = cacheMask1;
@@ -187,8 +384,9 @@ __global__ void _preparePrefixSumL0_new(int*          _prefixOriginal,
             prefixSum[localWarpId] = 0;
         }
         cacheMask[threadIdx.x] = connectMsk;
+        __syncwarp(active_mask);
         unsigned int visited   = (1U << laneId);
-        while(connectMsk != -1)
+        while(connectMsk != 0xffffffffU)
         {
             unsigned int todo = visited ^ connectMsk;
 
@@ -210,6 +408,7 @@ __global__ void _preparePrefixSumL0_new(int*          _prefixOriginal,
             atomicAdd(prefixSum + localWarpId, 1);
         }
 
+        __syncwarp(active_mask);
         if(laneId == 0)
         {
             _prefixOriginal[warpId] = prefixSum[localWarpId];
@@ -232,6 +431,7 @@ __global__ void _buildLevel1(int2*               _levelSize,
     int warpId      = idx / GPU_MAS_BANKSIZE;
     int localWarpId = threadIdx.x / GPU_MAS_BANKSIZE;
     int laneId      = idx % GPU_MAS_BANKSIZE;
+    const unsigned int active_mask = __activemask();
 
     __shared__ unsigned int electedMask[GPU_MAS_BANKSIZE];
     __shared__ unsigned int lanePrefix[GPU_MAS_BANKSIZE * GPU_MAS_BANKSIZE];
@@ -239,6 +439,7 @@ __global__ void _buildLevel1(int2*               _levelSize,
     {
         electedMask[localWarpId] = 0;
     }
+    __syncwarp(active_mask);
     if(idx == vertNum - 1)
     {
         _levelSize[1].x = _prefixSumOriginal[warpId] + _prefixOriginal[warpId];
@@ -253,6 +454,7 @@ __global__ void _buildLevel1(int2*               _levelSize,
     {
         atomicOr(electedMask + localWarpId, (1U << laneId));
     }
+    __syncwarp(active_mask);
 
     //unsigned int lanePrefix2 = __popc(electedMask[localWarpId] & _LanemaskLt(laneId));
     //lanePrefix2 += _prefixSumOriginal[warpId];
@@ -262,6 +464,7 @@ __global__ void _buildLevel1(int2*               _levelSize,
 
     lanePrefix[threadIdx.x] = __popc(electedMask[localWarpId] & _LanemaskLt(laneId));
     lanePrefix[threadIdx.x] += _prefixSumOriginal[warpId];
+    __syncwarp(active_mask);
 
     unsigned int elected_lane = __ffs(connMsk) - 1;
     unsigned int theLanePrefix = lanePrefix[elected_lane + GPU_MAS_BANKSIZE * localWarpId];  //__shfl_sync(0xffffffff, lanePrefix, elected_lane);
@@ -287,6 +490,7 @@ __global__ void _buildLevel1_new(int2*               _levelSize,
     int warpId      = tdx / GPU_MAS_BANKSIZE;
     int localWarpId = threadIdx.x / GPU_MAS_BANKSIZE;
     int laneId      = tdx % GPU_MAS_BANKSIZE;
+    const unsigned int warp_mask = __activemask();
 
     __shared__ unsigned int electedMask[GPU_MAS_BANKSIZE];
     __shared__ unsigned int lanePrefix[GPU_MAS_BANKSIZE * GPU_MAS_BANKSIZE];
@@ -294,12 +498,14 @@ __global__ void _buildLevel1_new(int2*               _levelSize,
     {
         electedMask[localWarpId] = 0;
     }
+    __syncwarp(warp_mask);
     if(tdx == number - 1)
     {
         _levelSize[1].x = _prefixSumOriginal[warpId] + _prefixOriginal[warpId];
         _levelSize[1].y = (number + GPU_MAS_BANKSIZE - 1) / GPU_MAS_BANKSIZE * GPU_MAS_BANKSIZE;
     }
     int idx = _partId_map_real[tdx];
+    const unsigned int active_mask = __ballot_sync(warp_mask, idx >= 0);
     if(idx >= 0)
     {
 
@@ -311,6 +517,7 @@ __global__ void _buildLevel1_new(int2*               _levelSize,
         {
             atomicOr(electedMask + localWarpId, (1U << laneId));
         }
+        __syncwarp(active_mask);
 
         //unsigned int lanePrefix2 = __popc(electedMask[localWarpId] & _LanemaskLt(laneId));
         //lanePrefix2 += _prefixSumOriginal[warpId];
@@ -320,6 +527,7 @@ __global__ void _buildLevel1_new(int2*               _levelSize,
 
         lanePrefix[threadIdx.x] = __popc(electedMask[localWarpId] & _LanemaskLt(laneId));
         lanePrefix[threadIdx.x] += _prefixSumOriginal[warpId];
+        __syncwarp(active_mask);
 
         unsigned int elected_lane = __ffs(connMsk) - 1;
         unsigned int theLanePrefix =
@@ -347,6 +555,7 @@ __global__ void _buildConnectMaskLx(const unsigned int* _neighborStart,
     int warpId      = idx / GPU_MAS_BANKSIZE;
     int localWarpId = threadIdx.x / GPU_MAS_BANKSIZE;
     int laneId      = idx % GPU_MAS_BANKSIZE;
+    const unsigned int active_mask = __activemask();
 
     unsigned int prefixMsk = _fineConnectedMsk[idx];
     unsigned int connMsk   = 0;
@@ -375,11 +584,13 @@ __global__ void _buildConnectMaskLx(const unsigned int* _neighborStart,
 
     __shared__ int cacheMsk[DEFAULT_BLOCKSIZE];
     cacheMsk[threadIdx.x] = 0;
+    __syncwarp(active_mask);
 
+    unsigned int cacheIndex = 0;
     if(__popc(prefixMsk) == GPU_MAS_BANKSIZE)
     {
         atomicOr(cacheMsk + localWarpId * GPU_MAS_BANKSIZE, connMsk);
-        connMsk = cacheMsk[localWarpId * GPU_MAS_BANKSIZE];
+        cacheIndex = localWarpId * GPU_MAS_BANKSIZE;
         //if (laneId == 0) {
         //	cacheMsk[localWarpId] = 0;
         //}
@@ -391,8 +602,10 @@ __global__ void _buildConnectMaskLx(const unsigned int* _neighborStart,
         {
             atomicOr(cacheMsk + localWarpId * GPU_MAS_BANKSIZE + electedLane, connMsk);
         }
-        connMsk = cacheMsk[localWarpId * GPU_MAS_BANKSIZE + electedLane];
+        cacheIndex = localWarpId * GPU_MAS_BANKSIZE + electedLane;
     }
+    __syncwarp(active_mask);
+    connMsk = cacheMsk[cacheIndex];
 
     unsigned int electedPrefix = __popc(prefixMsk & _LanemaskLt(laneId));
 
@@ -422,6 +635,7 @@ __global__ void _buildConnectMaskLx_new(const unsigned int* _neighborStart,
     int            laneId      = tdx % GPU_MAS_BANKSIZE;
     __shared__ int cacheMsk[DEFAULT_BLOCKSIZE];
     int            idx = _partId_map_real[tdx];
+    const unsigned int active_mask = __ballot_sync(__activemask(), idx >= 0);
     if(idx >= 0)
     {
 
@@ -452,11 +666,13 @@ __global__ void _buildConnectMaskLx_new(const unsigned int* _neighborStart,
 
 
         cacheMsk[threadIdx.x] = 0;
+        __syncwarp(active_mask);
 
+        unsigned int cacheIndex = 0;
         if(__popc(prefixMsk) == GPU_MAS_BANKSIZE)
         {
             atomicOr(cacheMsk + localWarpId * GPU_MAS_BANKSIZE, connMsk);
-            connMsk = cacheMsk[localWarpId * GPU_MAS_BANKSIZE];
+            cacheIndex = localWarpId * GPU_MAS_BANKSIZE;
             //if (laneId == 0) {
             //	cacheMsk[localWarpId] = 0;
             //}
@@ -468,8 +684,10 @@ __global__ void _buildConnectMaskLx_new(const unsigned int* _neighborStart,
             {
                 atomicOr(cacheMsk + localWarpId * GPU_MAS_BANKSIZE + electedLane, connMsk);
             }
-            connMsk = cacheMsk[localWarpId * GPU_MAS_BANKSIZE + electedLane];
+            cacheIndex = localWarpId * GPU_MAS_BANKSIZE + electedLane;
         }
+        __syncwarp(active_mask);
+        connMsk = cacheMsk[cacheIndex];
 
         unsigned int electedPrefix = __popc(prefixMsk & _LanemaskLt(laneId));
 
@@ -489,6 +707,7 @@ __global__ void _nextLevelCluster(unsigned int* _nextConnectedMsk, unsigned int*
     int            warpId      = idx / GPU_MAS_BANKSIZE;
     int            localWarpId = threadIdx.x / GPU_MAS_BANKSIZE;
     int            laneId      = idx % GPU_MAS_BANKSIZE;
+    const unsigned int active_mask = __activemask();
     __shared__ int prefixSum[DEFAULT_WARPNUM];
     if(laneId == 0)
     {
@@ -502,6 +721,7 @@ __global__ void _nextLevelCluster(unsigned int* _nextConnectedMsk, unsigned int*
 
     __shared__ unsigned int cachedMsk[DEFAULT_BLOCKSIZE];
     cachedMsk[threadIdx.x] = connMsk;
+    __syncwarp(active_mask);
     unsigned int visited   = (1U << laneId);
 
     while(true)
@@ -527,6 +747,7 @@ __global__ void _nextLevelCluster(unsigned int* _nextConnectedMsk, unsigned int*
         atomicAdd(prefixSum + localWarpId, 1);
     }
 
+    __syncwarp(active_mask);
     if(laneId == 0)
         _nextPrefix[warpId] = prefixSum[localWarpId];
 }
@@ -546,6 +767,7 @@ __global__ void _prefixSumLx(int2*         _levelSize,
     int warpId      = idx / GPU_MAS_BANKSIZE;
     int localWarpId = threadIdx.x / GPU_MAS_BANKSIZE;
     int laneId      = idx % GPU_MAS_BANKSIZE;
+    const unsigned int active_mask = __activemask();
 
     __shared__ unsigned int electedMask[GPU_MAS_BANKSIZE];
     __shared__ unsigned int lanePrefix[GPU_MAS_BANKSIZE * GPU_MAS_BANKSIZE];
@@ -553,6 +775,7 @@ __global__ void _prefixSumLx(int2*         _levelSize,
     {
         electedMask[localWarpId] = 0;
     }
+    __syncwarp(active_mask);
 
     if(idx == number - 1)
     {
@@ -568,9 +791,11 @@ __global__ void _prefixSumLx(int2*         _levelSize,
     {
         atomicOr(electedMask + localWarpId, (1U << laneId));
     }
+    __syncwarp(active_mask);
 
     lanePrefix[threadIdx.x] = __popc(electedMask[localWarpId] & _LanemaskLt(laneId));
     lanePrefix[threadIdx.x] += _nextPrefixSum[warpId];
+    __syncwarp(active_mask);
 
     unsigned int elected_lane = __ffs(connMsk) - 1;
     unsigned int theLanePrefix = lanePrefix[elected_lane + GPU_MAS_BANKSIZE * localWarpId];  //__shfl_sync(0xffffffff, lanePrefix, elected_lane);
@@ -762,6 +987,10 @@ __global__ void __buildMultiLevelR_optimized_new(const double3* _R,
     {
         prefixSum[localWarpId] = _prefixOrigin[gwarpId];
     }
+    const unsigned int warp_mask = __activemask();
+    __syncwarp(warp_mask);
+
+    const unsigned int active_mask = __ballot_sync(warp_mask, idx >= 0);
 
     if(idx >= 0)
     {
@@ -770,22 +999,14 @@ __global__ void __buildMultiLevelR_optimized_new(const double3* _R,
 
         if(prefixSum[localWarpId] == 1)
         {
-            auto mask_val  = __activemask();
-            int  warpId    = threadIdx.x & 0x1f;
-            bool bBoundary = (laneId == 0) || (warpId == 0);
-
-            unsigned int mark     = __ballot_sync(mask_val, bBoundary);
-            mark                  = __brev(mark);
-            int          clzlen   = __clz(mark << (warpId + 1));
-            unsigned int interval = std::min(clzlen, 31 - warpId);
-
-
             for(int iter = 1; iter < GPU_MAS_BANKSIZE; iter <<= 1)
             {
-                float tmpx = __shfl_down_sync(mask_val, r[0], iter);
-                float tmpy = __shfl_down_sync(mask_val, r[1], iter);
-                float tmpz = __shfl_down_sync(mask_val, r[2], iter);
-                if(interval >= iter)
+                const float tmpx = __shfl_down_sync(active_mask, r[0], iter);
+                const float tmpy = __shfl_down_sync(active_mask, r[1], iter);
+                const float tmpz = __shfl_down_sync(active_mask, r[2], iter);
+                const int source_lane = laneId + iter;
+                if(source_lane < GPU_MAS_BANKSIZE
+                   && (active_mask & (1U << source_lane)))
                 {
                     r[0] += tmpx;
                     r[1] += tmpy;
@@ -794,7 +1015,7 @@ __global__ void __buildMultiLevelR_optimized_new(const double3* _R,
             }
             //int level = 0;
 
-            if(bBoundary)
+            if(laneId == __ffs(active_mask) - 1)
             {
                 while(level < levelNum - 1)
                 {
@@ -814,11 +1035,13 @@ __global__ void __buildMultiLevelR_optimized_new(const double3* _R,
             c_sumResidual[threadIdx.x]                         = 0;
             c_sumResidual[threadIdx.x + DEFAULT_BLOCKSIZE]     = 0;
             c_sumResidual[threadIdx.x + 2 * DEFAULT_BLOCKSIZE] = 0;
+            __syncwarp(active_mask);
             atomicAdd(c_sumResidual + localWarpId * GPU_MAS_BANKSIZE + elected_lane, r[0]);
             atomicAdd(c_sumResidual + localWarpId * GPU_MAS_BANKSIZE + elected_lane + DEFAULT_BLOCKSIZE,
                       r[1]);
             atomicAdd(c_sumResidual + localWarpId * GPU_MAS_BANKSIZE + elected_lane + 2 * DEFAULT_BLOCKSIZE,
                       r[2]);
+            __syncwarp(active_mask);
 
             unsigned int electedPrefix = __popc(connectMsk & _LanemaskLt(laneId));
             if(electedPrefix == 0)
@@ -1839,6 +2062,18 @@ __global__ void prepare_hessian_bcoo_kernel(int                   tripletNum,
 
             _invMatrix[cPid].M[index] = H;
         }
+        else
+        {
+            // The global BCOO is upper triangular in the original vertex
+            // numbering. Morton reordering can reverse that order inside a
+            // MAS32 bank, so store the transposed block in the compressed
+            // upper triangle instead of silently dropping it.
+            int bvRid = vertRid % GPU_MAS_BANKSIZE;
+            int bvCid = vertCid % GPU_MAS_BANKSIZE;
+            int index = GPU_MAS_BANKSIZE * bvCid
+                        - bvCid * (bvCid + 1) / 2 + bvRid;
+            _invMatrix[cPid].M[index] = H.transpose();
+        }
     }
     else
     {
@@ -1939,13 +2174,16 @@ __global__ void prepare_hessian_bcoo_sum_kernel(int                   tripletNum
         mat3 = _invMatrix[Hid].M[index].transpose();
     }
 
-    if((rdx >= 0) && (cdx >= 0))
+    const bool         mapped      = (rdx >= 0) && (cdx >= 0);
+    const unsigned int active_mask = __ballot_sync(__activemask(), mapped);
+
+    if(mapped)
     {
         if(prefix == 1)
         {
             int warpId = threadIdx.x & 0x1f;
-            bool bBoundary = (warpId == 0) || (rdx < 0) || (cdx < 0);
-            unsigned int mark = __ballot_sync(0xffffffff, bBoundary);
+            bool bBoundary = (warpId == 0);
+            unsigned int mark = __ballot_sync(active_mask, bBoundary);
             mark = __brev(mark);
             int clzlen = __clz(mark << (warpId + 1));
             unsigned int interval = std::min(clzlen, 31 - warpId);
@@ -1957,7 +2195,7 @@ __global__ void prepare_hessian_bcoo_sum_kernel(int                   tripletNum
                     for(int j = 0; j < 3; j++)
                     {
                         matTemp(i, j) =
-                            __shfl_down_sync(0xffffffff, mat3(i, j), iter);
+                            __shfl_down_sync(active_mask, mat3(i, j), iter);
                     }
                 }
                 if(interval >= iter)
@@ -1965,6 +2203,7 @@ __global__ void prepare_hessian_bcoo_sum_kernel(int                   tripletNum
                     mat3 = mat3 + matTemp;
                 }
             }
+            __syncwarp(active_mask);
             int level = 0;
             if(bBoundary)
             {
@@ -2280,6 +2519,168 @@ void TraditionalMAS32Preconditioner::preconditioning(const double3* R, double3* 
     //(cudaEventDestroy(end0));
     //(cudaEventDestroy(end1));
     //(cudaEventDestroy(end2));
+}
+
+gipc::Json TraditionalMAS32Preconditioner::numerical_diagnostics(const double3* R) const
+{
+    constexpr int bank_size = GPU_MAS_BANKSIZE;
+    constexpr int dimension = GPU_MAS_BANKSIZE * 3;
+    const int matrix_count = totalNumberClusters / GPU_MAS_BANKSIZE;
+
+    std::vector<__GEIGEN__::GPUMas32MatrixSymT> local_matrices(matrix_count);
+    std::vector<__GEIGEN__::GPUMas32MatrixSymf> inverse_matrices(matrix_count);
+    std::vector<Precision_T3> multilevel_z(totalNumberClusters);
+    std::vector<__GEIGEN__::itable> coarse_table(totalNodes);
+    std::vector<int> real_to_part(totalNodes);
+    std::vector<double3> rhs(totalNodes);
+    CUDA_SAFE_CALL(cudaMemcpy(local_matrices.data(),
+                              d_inverseMatMas,
+                              local_matrices.size()
+                                  * sizeof(__GEIGEN__::GPUMas32MatrixSymT),
+                              cudaMemcpyDeviceToHost));
+    CUDA_SAFE_CALL(cudaMemcpy(inverse_matrices.data(),
+                              d_precondMatMas,
+                              inverse_matrices.size()
+                                  * sizeof(__GEIGEN__::GPUMas32MatrixSymf),
+                              cudaMemcpyDeviceToHost));
+    CUDA_SAFE_CALL(cudaMemcpy(multilevel_z.data(),
+                              d_multiLevelZ,
+                              multilevel_z.size() * sizeof(Precision_T3),
+                              cudaMemcpyDeviceToHost));
+    CUDA_SAFE_CALL(cudaMemcpy(coarse_table.data(),
+                              d_coarseTable,
+                              coarse_table.size() * sizeof(__GEIGEN__::itable),
+                              cudaMemcpyDeviceToHost));
+    CUDA_SAFE_CALL(cudaMemcpy(real_to_part.data(),
+                              d_real_map_partId,
+                              real_to_part.size() * sizeof(int),
+                              cudaMemcpyDeviceToHost));
+    CUDA_SAFE_CALL(cudaMemcpy(rhs.data(),
+                              R,
+                              rhs.size() * sizeof(double3),
+                              cudaMemcpyDeviceToHost));
+
+    int local_spd_count = 0;
+    int inverse_spd_count = 0;
+    int nonfinite_local_count = 0;
+    int nonfinite_inverse_count = 0;
+    int first_local_spd_failure = -1;
+    int first_inverse_spd_failure = -1;
+    double maximum_inverse_residual = 0.0;
+    double minimum_local_diagonal = std::numeric_limits<double>::infinity();
+    double minimum_inverse_diagonal = std::numeric_limits<double>::infinity();
+
+    for(int matrix_id = 0; matrix_id < matrix_count; ++matrix_id)
+    {
+        Eigen::Matrix<double, dimension, dimension> local =
+            Eigen::Matrix<double, dimension, dimension>::Zero();
+        Eigen::Matrix<double, dimension, dimension> inverse =
+            Eigen::Matrix<double, dimension, dimension>::Zero();
+        for(int block_row = 0; block_row < bank_size; ++block_row)
+        {
+            for(int block_col = block_row; block_col < bank_size; ++block_col)
+            {
+                const int index = bank_size * block_row
+                                  - block_row * (block_row + 1) / 2 + block_col;
+                const Eigen::Matrix3d local_block = local_matrices[matrix_id].M[index];
+                const Eigen::Matrix3d inverse_block =
+                    inverse_matrices[matrix_id].M[index].cast<double>();
+                local.template block<3, 3>(block_row * 3, block_col * 3) =
+                    local_block;
+                inverse.template block<3, 3>(block_row * 3, block_col * 3) =
+                    inverse_block;
+                if(block_row != block_col)
+                {
+                    local.template block<3, 3>(block_col * 3, block_row * 3) =
+                        local_block.transpose();
+                    inverse.template block<3, 3>(block_col * 3, block_row * 3) =
+                        inverse_block.transpose();
+                }
+            }
+        }
+        for(int diagonal = 0; diagonal < dimension; ++diagonal)
+            if(local(diagonal, diagonal) == 0.0)
+                local(diagonal, diagonal) = 1.0;
+
+        const bool local_finite = local.allFinite();
+        const bool inverse_finite = inverse.allFinite();
+        if(!local_finite)
+            ++nonfinite_local_count;
+        if(!inverse_finite)
+            ++nonfinite_inverse_count;
+        minimum_local_diagonal =
+            std::min(minimum_local_diagonal, local.diagonal().minCoeff());
+        minimum_inverse_diagonal =
+            std::min(minimum_inverse_diagonal, inverse.diagonal().minCoeff());
+
+        const bool local_spd = local_finite
+                               && Eigen::LLT<decltype(local)>(local).info()
+                                      == Eigen::Success;
+        const bool inverse_spd = inverse_finite
+                                 && Eigen::LLT<decltype(inverse)>(inverse).info()
+                                        == Eigen::Success;
+        if(local_spd)
+            ++local_spd_count;
+        else if(first_local_spd_failure < 0)
+            first_local_spd_failure = matrix_id;
+        if(inverse_spd)
+            ++inverse_spd_count;
+        else if(first_inverse_spd_failure < 0)
+            first_inverse_spd_failure = matrix_id;
+
+        if(local_finite && inverse_finite)
+        {
+            const auto residual = local * inverse
+                                  - Eigen::Matrix<double, dimension, dimension>::Identity();
+            maximum_inverse_residual =
+                std::max(maximum_inverse_residual,
+                         residual.norm() / std::sqrt(static_cast<double>(dimension)));
+        }
+    }
+
+    std::vector<long double> level_rtz(levelnum, 0.0L);
+    for(int vertex = 0; vertex < totalNodes; ++vertex)
+    {
+        int cluster = real_to_part[vertex];
+        const auto accumulate = [&](int level, int cluster_id) {
+            const auto& z = multilevel_z[cluster_id];
+            level_rtz[level] += static_cast<long double>(rhs[vertex].x) * z.x
+                                + static_cast<long double>(rhs[vertex].y) * z.y
+                                + static_cast<long double>(rhs[vertex].z) * z.z;
+        };
+        accumulate(0, cluster);
+        for(int level = 1; level < levelnum; ++level)
+        {
+            cluster = coarse_table[vertex].index[level - 1];
+            accumulate(level, cluster);
+        }
+    }
+
+    gipc::Json result;
+    result["matrix_count"] = matrix_count;
+    result["local_spd_count"] = local_spd_count;
+    result["inverse_spd_count"] = inverse_spd_count;
+    result["first_local_spd_failure"] = first_local_spd_failure;
+    result["first_inverse_spd_failure"] = first_inverse_spd_failure;
+    result["nonfinite_local_count"] = nonfinite_local_count;
+    result["nonfinite_inverse_count"] = nonfinite_inverse_count;
+    result["minimum_local_diagonal"] = minimum_local_diagonal;
+    result["minimum_inverse_diagonal"] = minimum_inverse_diagonal;
+    result["maximum_inverse_residual"] = maximum_inverse_residual;
+    result["level_rtz"] = gipc::Json::array();
+    long double level_sum = 0.0L;
+    for(const auto value : level_rtz)
+    {
+        result["level_rtz"].push_back(static_cast<double>(value));
+        level_sum += value;
+    }
+    result["level_rtz_sum"] = static_cast<double>(level_sum);
+    result["passed"] = local_spd_count == matrix_count
+                       && inverse_spd_count == matrix_count
+                       && nonfinite_local_count == 0
+                       && nonfinite_inverse_count == 0
+                       && maximum_inverse_residual <= 1e-3;
+    return result;
 }
 
 void TraditionalMAS32Preconditioner::initPreconditioner_Neighbor(int vertNum,

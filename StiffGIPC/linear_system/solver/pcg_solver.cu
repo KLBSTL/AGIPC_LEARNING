@@ -2,6 +2,8 @@
 #include <gipc/utils/timer.h>
 #include <gipc/statistics.h>
 #include <cuda_tools/cuda_tools.h>
+#include <cmath>
+#include <limits>
 
 
 
@@ -171,7 +173,26 @@ SizeT PCGSolver::solve(cudatool::DenseVectorView<Float> x, cudatool::CDenseVecto
 }
 
 
-SizeT PCGSolver::pcg(cudatool::DenseVectorView<Float> x, cudatool::CDenseVectorView<Float> b, SizeT max_iter)
+Json PCGSolver::trace(cudatool::DenseVectorView<Float>  x,
+                      cudatool::CDenseVectorView<Float> b,
+                      SizeT                             iteration_count)
+{
+    x.buffer_view().fill(0);
+    z.resize(b.size());
+    p.resize(b.size());
+    r.resize(b.size());
+    Ap.resize(b.size());
+    Json result;
+    result["iterations"] = Json::array();
+    result["requested_iterations"] = iteration_count;
+    result["completed_iterations"] = pcg(x, b, iteration_count + 1, &result);
+    return result;
+}
+
+SizeT PCGSolver::pcg(cudatool::DenseVectorView<Float>  x,
+                     cudatool::CDenseVectorView<Float> b,
+                     SizeT                             max_iter,
+                     Json*                             trace)
 {
     SizeT k = 0;
 
@@ -195,8 +216,23 @@ SizeT PCGSolver::pcg(cudatool::DenseVectorView<Float> x, cudatool::CDenseVectorV
     p   = z;
     rz0 = rz;
 
+    auto residual_norm = [&]() {
+        std::vector<Float> host_r;
+        r.copy_to(host_r);
+        long double sum = 0.0;
+        for(const auto value : host_r)
+            sum += static_cast<long double>(value) * value;
+        return std::sqrt(static_cast<double>(sum));
+    };
+    if(trace)
+    {
+        (*trace)["initial_residual_norm"] = residual_norm();
+        (*trace)["initial_rtz"] = rz;
+    }
+
     for(k = 1; k < max_iter; ++k)
     {
+        Float dot_res = 0;
         {
             //Timer timer{"spmv"};
             // Ap = A * p
@@ -206,13 +242,19 @@ SizeT PCGSolver::pcg(cudatool::DenseVectorView<Float> x, cudatool::CDenseVectorV
         {
             //Timer timer{"dot"};
 
-            Float dot_res =
-                My_PCG_General_v_v_Reduction_Algorithm(z.buffer_view().data(),
-                                                       p.buffer_view().data(),
-                                                       Ap.buffer_view().data(),
-                                                       z.size());
+            dot_res = My_PCG_General_v_v_Reduction_Algorithm(
+                z.buffer_view().data(),
+                p.buffer_view().data(),
+                Ap.buffer_view().data(),
+                z.size());
 
             alpha = rz / dot_res;
+
+            if(trace)
+                (*trace)["iterations"].push_back({{"iteration", k},
+                                                    {"rtz_before", rz},
+                                                    {"p_t_a_p", dot_res},
+                                                    {"alpha", alpha}});
         }
 
         {
@@ -229,8 +271,15 @@ SizeT PCGSolver::pcg(cudatool::DenseVectorView<Float> x, cudatool::CDenseVectorV
                                      (int)z.size());
         }
 
+        if(trace)
+            (*trace)["iterations"].back()["residual_norm"] = residual_norm();
+
         if(std::abs(rz) <= m_config.global_tol_rate * rz0)
+        {
+            if(trace)
+                (*trace)["iterations"].back()["existing_convergence_gate"] = true;
             break;
+        }
 
         {
             //Timer timer{"preconditioner"};
@@ -247,6 +296,16 @@ SizeT PCGSolver::pcg(cudatool::DenseVectorView<Float> x, cudatool::CDenseVectorV
         }
 
         beta = rz_new / rz;
+
+        if(trace)
+        {
+            auto& record = (*trace)["iterations"].back();
+            record["rtz_after"] = rz_new;
+            record["beta"] = beta;
+            record["finite"] = std::isfinite(alpha) && std::isfinite(beta)
+                               && std::isfinite(dot_res) && std::isfinite(rz_new);
+            record["spd"] = dot_res > 0.0 && rz_new > 0.0;
+        }
 
         {
             //Timer timer{"axpby"};

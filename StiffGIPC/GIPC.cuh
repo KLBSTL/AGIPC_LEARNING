@@ -144,6 +144,8 @@ class GIPC
     uint64_t getHashCode(double3 p, uint32_t i);
     void     build_gipc_system(device_TetraData& tet);
     void     set_spmv_mode(gipc::SpmvMode mode);
+    void     set_frozen_linear_diagnostics_path(const std::string& path);
+    bool     frozen_linear_diagnostics_complete() const;
 
     void MALLOC_DEVICE_MEM();
 

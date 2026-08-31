@@ -12,9 +12,24 @@
 #include "eigen_data.h"
 #include <cuda_tools/cuda_all.h>
 #include "linear_system/linear_system/global_matrix.h"
+#include <gipc/utils/json.h>
 
 namespace gpu_mas32
 {
+struct HierarchySelfTestResult
+{
+    bool passed = false;
+    int  valid_nodes = 0;
+    int  padded_nodes = 0;
+    int  expected_components = 0;
+    int  actual_components = 0;
+    int  fine_mask_mismatches = 0;
+    int  coarse_mapping_mismatches = 0;
+    int  going_next_mismatches = 0;
+};
+
+HierarchySelfTestResult run_hierarchy_self_test();
+
 class TraditionalMAS32Preconditioner
 {
 
@@ -97,6 +112,7 @@ class TraditionalMAS32Preconditioner
                              int              triplet_number);
 
     void preconditioning(const double3* R, double3* Z);
+    gipc::Json numerical_diagnostics(const double3* R) const;
     void BuildMultiLevelR(const double3* R);  // called in preconditioning
     void SchwarzLocalXSym();                  // called in preconditioning
     void SchwarzLocalXSym_block3();                  // called in preconditioning

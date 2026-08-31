@@ -43,6 +43,19 @@ void GIPC::set_spmv_mode(gipc::SpmvMode mode)
     m_global_linear_system->spmv_mode(mode);
 }
 
+void GIPC::set_frozen_linear_diagnostics_path(const std::string& path)
+{
+    CT_ASSERT(m_global_linear_system,
+              "build_gipc_system() must precede frozen diagnostics setup");
+    m_global_linear_system->frozen_linear_diagnostics_path(path);
+}
+
+bool GIPC::frozen_linear_diagnostics_complete() const
+{
+    return m_global_linear_system
+           && m_global_linear_system->frozen_linear_diagnostics_complete();
+}
+
 void GIPC::init_abd_system()
 {
     m_abd_sim_data->upload();

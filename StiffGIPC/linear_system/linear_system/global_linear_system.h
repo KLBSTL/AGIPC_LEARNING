@@ -64,6 +64,14 @@ class GlobalLinearSystem
 
     void spmv_mode(SpmvMode mode) { m_spmv_mode = mode; }
     SpmvMode spmv_mode() const { return m_spmv_mode; }
+    void frozen_linear_diagnostics_path(std::string path)
+    {
+        m_frozen_linear_diagnostics_path = std::move(path);
+    }
+    bool frozen_linear_diagnostics_complete() const
+    {
+        return m_frozen_linear_diagnostics_complete;
+    }
 
     Json               as_json() const;
     GIPCTripletMatrix* gipc_global_triplet = nullptr;
@@ -89,6 +97,8 @@ class GlobalLinearSystem
     SpmvMode                       m_spmv_mode = SpmvMode::SRBK;
     Converter                      m_converter;
     cudatool::DeviceDenseVector<Float> fake_y;
+    std::string                    m_frozen_linear_diagnostics_path;
+    bool                           m_frozen_linear_diagnostics_complete = false;
 
 
     bool build_linear_system();
@@ -97,6 +107,7 @@ class GlobalLinearSystem
                               cudatool::CDenseVectorView<Float> r);
 
     void convert_new();
+    void run_frozen_linear_diagnostics();
 
     void spmv(Float a, cudatool::CDenseVectorView<Float> x, Float b, cudatool::DenseVectorView<Float> y);
 

@@ -10930,6 +10930,8 @@ int              GIPC::solve_subIP(device_TetraData& TetMesh,
         cudaEventRecord(end0);
 
         auto cg_count = calculateMovingDirection(TetMesh, h_cpNum[0], pcg_data.P_type);
+        if(frozen_linear_diagnostics_complete())
+            return k + 1;
         //std::cout << "[" << k << "]"
         //          << "cg_count = " << cg_count << std::endl;
         total_Cg_count += cg_count;
@@ -11175,6 +11177,12 @@ void   GIPC::IPC_Solver(device_TetraData& TetMesh)
         CUDA_SAFE_CALL(cudaMemset(_close_gpNum, 0, sizeof(uint32_t)));
 
         totalNT += solve_subIP(TetMesh, time0, time1, time2, time3, time4);
+
+        if(frozen_linear_diagnostics_complete())
+        {
+            tempFree_closeConstraint();
+            return;
+        }
 
         double2 minMaxDist1 = minMaxGroundDist();
         double2 minMaxDist2 = minMaxSelfDist();

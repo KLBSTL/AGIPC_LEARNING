@@ -1743,6 +1743,8 @@ void init(void)
 
     ipc.build_gipc_system(d_tetMesh);
     ipc.set_spmv_mode(runtime_options.spmv);
+    ipc.set_frozen_linear_diagnostics_path(
+        runtime_options.frozen_linear_diagnostics_path);
 
     initScene();
 
@@ -1774,6 +1776,8 @@ void init_headless()
     std::cerr << "[headless] build_system" << std::endl;
     ipc.build_gipc_system(d_tetMesh);
     ipc.set_spmv_mode(runtime_options.spmv);
+    ipc.set_frozen_linear_diagnostics_path(
+        runtime_options.frozen_linear_diagnostics_path);
     std::cerr << "[headless] init_scene" << std::endl;
     initScene();
     std::cerr << "[headless] ready" << std::endl;
@@ -1791,7 +1795,14 @@ int run_headless()
     const auto simulation_begin = std::chrono::steady_clock::now();
 
     for(int frame = 0; frame < runtime_options.frames; ++frame)
+    {
         ipc.IPC_Solver(d_tetMesh);
+        // A frozen-linear run intentionally stops before CCD, line search,
+        // position update, and frame accounting. Do not enter the ordinary
+        // headless metrics path with that deliberately incomplete frame.
+        if(ipc.frozen_linear_diagnostics_complete())
+            return 0;
+    }
 
     CUDA_SAFE_CALL(cudaDeviceSynchronize());
     CUDA_SAFE_CALL(cudaMemcpy(tetMesh.vertexes.data(),
@@ -2081,6 +2092,23 @@ int main(int argc, char** argv)
         metrics["legacy_srbk_max_abs_error"] = result.legacy_srbk_max_abs_error;
         metrics["legacy_srbk_max_relative_error"] =
             result.legacy_srbk_max_relative_error;
+        std::cout << metrics.dump(2) << '\n';
+        return result.passed ? 0 : 3;
+    }
+    if(runtime_options.mas32_self_test)
+    {
+        Init_CUDA();
+        const auto result = gpu_mas32::run_hierarchy_self_test();
+        gipc::Json metrics;
+        metrics["test"] = "traditional_mas32_hierarchy";
+        metrics["passed"] = result.passed;
+        metrics["valid_nodes"] = result.valid_nodes;
+        metrics["padded_nodes"] = result.padded_nodes;
+        metrics["expected_components"] = result.expected_components;
+        metrics["actual_components"] = result.actual_components;
+        metrics["fine_mask_mismatches"] = result.fine_mask_mismatches;
+        metrics["coarse_mapping_mismatches"] = result.coarse_mapping_mismatches;
+        metrics["going_next_mismatches"] = result.going_next_mismatches;
         std::cout << metrics.dump(2) << '\n';
         return result.passed ? 0 : 3;
     }

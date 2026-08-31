@@ -36,6 +36,8 @@ struct RuntimeOptions
     bool        agipc_diagnostics = false;
     bool        agipc_self_test   = false;
     bool        spmv_self_test    = false;
+    bool        mas32_self_test   = false;
+    std::string frozen_linear_diagnostics_path;
 };
 
 struct ParseResult

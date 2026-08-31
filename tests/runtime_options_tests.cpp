@@ -244,6 +244,26 @@ int main()
     }
 
     {
+        const auto result = parse({"gipc", "--mas32-self-test"});
+        require(result.ok && result.options.mas32_self_test,
+                "the MAS32 hierarchy self-test must parse");
+    }
+
+    {
+        const auto result = parse({"gipc",
+                                   "--scene",
+                                   "paper-fig12-coupling-scaled",
+                                   "--framework",
+                                   "gipc",
+                                   "--headless",
+                                   "--frozen-linear-diagnostics",
+                                   "frozen.json"});
+        require(result.ok
+                    && result.options.frozen_linear_diagnostics_path == "frozen.json",
+                "Figure 12 GPU MAS32 must accept frozen linear diagnostics");
+    }
+
+    {
         const auto result = parse({"gipc",
                                    "--scene",
                                    "paper-fig12-coupling-scaled",
@@ -281,6 +301,10 @@ int main()
                 "help must expose the two real SpMV implementations");
         require(result.help.find("--spmv-self-test") != std::string::npos,
                 "help must expose the fixed-Hessian equivalence gate");
+        require(result.help.find("--mas32-self-test") != std::string::npos,
+                "help must expose the MAS32 hierarchy equivalence gate");
+        require(result.help.find("--frozen-linear-diagnostics") != std::string::npos,
+                "help must expose the frozen linear-system diagnostic gate");
         require(result.help.find("--framework gipc|srbk|cemas-srbk|abd-cemas-srbk")
                     != std::string::npos,
                 "help must expose the benchmark framework contract");

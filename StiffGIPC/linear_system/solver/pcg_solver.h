@@ -1,5 +1,6 @@
 #pragma once
 #include <linear_system/linear_system/i_linear_system_solver.h>
+#include <gipc/utils/json.h>
 
 namespace gipc
 {
@@ -25,6 +26,9 @@ class PCGSolver : public IterativeSolver
 
     void config(const PCGSolverConfig& config) { this->m_config = config; }
     const auto& config() const { return this->m_config; }
+    Json trace(cudatool::DenseVectorView<Float>  x,
+               cudatool::CDenseVectorView<Float> b,
+               SizeT                             iteration_count);
 
   private:
 
@@ -38,6 +42,9 @@ class PCGSolver : public IterativeSolver
     SizeT solve(cudatool::DenseVectorView<Float> x, cudatool::CDenseVectorView<Float> b) override;
 
   private:
-    SizeT pcg(cudatool::DenseVectorView<Float> x, cudatool::CDenseVectorView<Float> b, SizeT max_iter);
+    SizeT pcg(cudatool::DenseVectorView<Float>  x,
+              cudatool::CDenseVectorView<Float> b,
+              SizeT                             max_iter,
+              Json*                             trace = nullptr);
 };
 }  // namespace gipc

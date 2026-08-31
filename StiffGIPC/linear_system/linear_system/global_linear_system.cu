@@ -3,6 +3,24 @@
 #include <linear_system/linear_system/i_preconditioner.h>
 #include <cuda_tools/cuda_tools.h>
 #include <gipc/utils/timer.h>
+#include <linear_system/solver/pcg_solver.h>
+#include <linear_system/preconditioner/traditional_mas32_preconditioner.h>
+
+#include <cmath>
+#include <filesystem>
+#include <fstream>
+#include <vector>
+
+namespace
+{
+template <typename T>
+void write_binary(const std::filesystem::path& path, const std::vector<T>& values)
+{
+    std::ofstream output(path, std::ios::binary | std::ios::trunc);
+    output.write(reinterpret_cast<const char*>(values.data()),
+                 static_cast<std::streamsize>(values.size() * sizeof(T)));
+}
+}  // namespace
 
 namespace gipc
 {
@@ -128,6 +146,14 @@ gipc::SizeT GlobalLinearSystem::solve_linear_system()
     if(!success)
         return 0;
     CT_ASSERT(m_solver, "Solver is null, call create_solver() to setup a solver.");
+    if(!m_frozen_linear_diagnostics_path.empty()
+       && !m_frozen_linear_diagnostics_complete)
+    {
+        run_frozen_linear_diagnostics();
+        m_frozen_linear_diagnostics_complete = true;
+        m_x.buffer_view().fill(0);
+        return 0;
+    }
     auto iter = m_solver->solve(m_x, m_b);
     distribute_solution();
     return iter;
@@ -208,5 +234,178 @@ void GlobalLinearSystem::spmv(Float                         a,
                                     b,
                                     y);
     }
+}
+
+void GlobalLinearSystem::run_frozen_linear_diagnostics()
+{
+    const std::filesystem::path json_path = m_frozen_linear_diagnostics_path;
+    const auto output_dir = json_path.has_parent_path() ? json_path.parent_path()
+                                                        : std::filesystem::current_path();
+    std::filesystem::create_directories(output_dir);
+
+    const int triplet_count = gipc_global_triplet->h_unique_key_number;
+    std::vector<Eigen::Matrix3d> matrix_values(triplet_count);
+    std::vector<int> matrix_rows(triplet_count);
+    std::vector<int> matrix_cols(triplet_count);
+    std::vector<Float> rhs;
+    CUDA_SAFE_CALL(cudaMemcpy(matrix_values.data(),
+                              gipc_global_triplet->block_values(),
+                              matrix_values.size() * sizeof(Eigen::Matrix3d),
+                              cudaMemcpyDeviceToHost));
+    CUDA_SAFE_CALL(cudaMemcpy(matrix_rows.data(),
+                              gipc_global_triplet->block_row_indices(),
+                              matrix_rows.size() * sizeof(int),
+                              cudaMemcpyDeviceToHost));
+    CUDA_SAFE_CALL(cudaMemcpy(matrix_cols.data(),
+                              gipc_global_triplet->block_col_indices(),
+                              matrix_cols.size() * sizeof(int),
+                              cudaMemcpyDeviceToHost));
+    m_b.copy_to(rhs);
+
+    const auto values_path = output_dir / "frozen_A_values.bin";
+    const auto rows_path   = output_dir / "frozen_A_rows.bin";
+    const auto cols_path   = output_dir / "frozen_A_cols.bin";
+    const auto rhs_path    = output_dir / "frozen_b.bin";
+    write_binary(values_path, matrix_values);
+    write_binary(rows_path, matrix_rows);
+    write_binary(cols_path, matrix_cols);
+    write_binary(rhs_path, rhs);
+
+    std::vector<Float> host_x(rhs.size());
+    for(size_t i = 0; i < host_x.size(); ++i)
+        host_x[i] = std::sin(0.013 * static_cast<double>(i + 1))
+                    + 0.25 * std::cos(0.007 * static_cast<double>(i + 3));
+    cudatool::DeviceDenseVector<Float> diagnostic_x;
+    cudatool::DeviceDenseVector<Float> legacy_y(rhs.size());
+    cudatool::DeviceDenseVector<Float> srbk_y(rhs.size());
+    diagnostic_x.copy_from(host_x);
+    m_spmv.legacy_sym_spmv(1.0,
+                           gipc_global_triplet->block_values(),
+                           gipc_global_triplet->block_row_indices(),
+                           gipc_global_triplet->block_col_indices(),
+                           triplet_count,
+                           diagnostic_x.cview(),
+                           0.0,
+                           legacy_y.view());
+    m_spmv.warp_reduce_sym_spmv(1.0,
+                                gipc_global_triplet->block_values(),
+                                gipc_global_triplet->block_row_indices(),
+                                gipc_global_triplet->block_col_indices(),
+                                triplet_count,
+                                diagnostic_x.cview(),
+                                0.0,
+                                srbk_y.view());
+    CUDA_SAFE_CALL(cudaDeviceSynchronize());
+    std::vector<Float> host_legacy_y;
+    std::vector<Float> host_srbk_y;
+    legacy_y.copy_to(host_legacy_y);
+    srbk_y.copy_to(host_srbk_y);
+    long double diff_sq = 0.0;
+    long double legacy_sq = 0.0;
+    double max_abs_error = 0.0;
+    for(size_t i = 0; i < host_legacy_y.size(); ++i)
+    {
+        const double difference = host_legacy_y[i] - host_srbk_y[i];
+        diff_sq += static_cast<long double>(difference) * difference;
+        legacy_sq += static_cast<long double>(host_legacy_y[i]) * host_legacy_y[i];
+        max_abs_error = std::max(max_abs_error, std::abs(difference));
+    }
+    const double spmv_relative_error =
+        std::sqrt(static_cast<double>(diff_sq / std::max(legacy_sq, 1e-300L)));
+
+    cudatool::DeviceDenseVector<Float> preconditioned_rhs(rhs.size());
+    apply_preconditioner(preconditioned_rhs.view(), m_b.cview());
+    CUDA_SAFE_CALL(cudaDeviceSynchronize());
+    std::vector<Float> host_z;
+    preconditioned_rhs.copy_to(host_z);
+    long double rhs_t_z = 0.0;
+    for(size_t i = 0; i < rhs.size(); ++i)
+        rhs_t_z += static_cast<long double>(rhs[i]) * host_z[i];
+
+    Json mas32_numerical;
+    bool has_mas32_numerical = false;
+    for(const auto& preconditioner : m_local_preconditioners)
+    {
+        if(const auto* mas32 =
+               dynamic_cast<const TraditionalMAS32_Preconditioner*>(preconditioner.get()))
+        {
+            mas32_numerical = mas32->numerical_diagnostics(m_b.cview());
+            has_mas32_numerical = true;
+            break;
+        }
+    }
+
+    auto* pcg = dynamic_cast<PCGSolver*>(m_solver.get());
+    CT_ASSERT(pcg, "frozen linear diagnostics requires PCGSolver");
+    const auto original_mode = m_spmv_mode;
+    m_spmv_mode = SpmvMode::Legacy;
+    Json legacy_trace = pcg->trace(m_x.view(), m_b.cview(), 100);
+    m_spmv_mode = SpmvMode::SRBK;
+    Json srbk_trace = pcg->trace(m_x.view(), m_b.cview(), 100);
+    m_spmv_mode = original_mode;
+
+    int first_residual_divergence = -1;
+    const auto trace_count = std::min(legacy_trace["iterations"].size(),
+                                      srbk_trace["iterations"].size());
+    for(size_t i = 0; i < trace_count; ++i)
+    {
+        const double legacy_residual =
+            legacy_trace["iterations"][i]["residual_norm"].get<double>();
+        const double srbk_residual =
+            srbk_trace["iterations"][i]["residual_norm"].get<double>();
+        const double relative_difference =
+            std::abs(legacy_residual - srbk_residual)
+            / std::max(std::abs(legacy_residual), 1e-300);
+        if(relative_difference > 1e-3)
+        {
+            first_residual_divergence = static_cast<int>(i) + 1;
+            break;
+        }
+    }
+
+    auto trace_is_spd = [](const Json& trace) {
+        if(trace["initial_rtz"].get<double>() <= 0.0)
+            return false;
+        for(const auto& iteration : trace["iterations"])
+            if(iteration.contains("spd") && !iteration["spd"].get<bool>())
+                return false;
+        return true;
+    };
+
+    Json report;
+    report["test"] = "figure12_first_frame_first_newton_frozen_linear_system";
+    report["frozen_in_memory"] = true;
+    report["matrix_block_rows"] = gipc_global_triplet->block_rows();
+    report["matrix_block_cols"] = gipc_global_triplet->block_cols();
+    report["matrix_triplets"] = triplet_count;
+    report["scalar_dofs"] = rhs.size();
+    report["artifacts"] = {{"A_values", values_path.filename().string()},
+                             {"A_rows", rows_path.filename().string()},
+                             {"A_cols", cols_path.filename().string()},
+                             {"b", rhs_path.filename().string()}};
+    report["spmv"] = {{"relative_error", spmv_relative_error},
+                        {"max_abs_error", max_abs_error},
+                        {"passed", spmv_relative_error <= 1e-10}};
+    report["preconditioner"] = {{"rhs_t_z", static_cast<double>(rhs_t_z)},
+                                  {"rhs_t_z_positive", rhs_t_z > 0.0},
+                                  {"same_instance_reused", true}};
+    if(has_mas32_numerical)
+        report["preconditioner"]["mas32_numerical"] =
+            std::move(mas32_numerical);
+    report["legacy_pcg"] = std::move(legacy_trace);
+    report["srbk_pcg"] = std::move(srbk_trace);
+    report["first_residual_divergence_iteration"] = first_residual_divergence;
+    report["gates"] = {{"spmv_equivalent", spmv_relative_error <= 1e-10},
+                         {"rhs_preconditioner_spd", rhs_t_z > 0.0},
+                         {"legacy_trace_spd", trace_is_spd(report["legacy_pcg"])},
+                         {"srbk_trace_spd", trace_is_spd(report["srbk_pcg"])}};
+    report["passed"] = report["gates"]["spmv_equivalent"].get<bool>()
+                       && report["gates"]["rhs_preconditioner_spd"].get<bool>()
+                       && report["gates"]["legacy_trace_spd"].get<bool>()
+                       && report["gates"]["srbk_trace_spd"].get<bool>();
+
+    std::ofstream output(json_path, std::ios::trunc);
+    output << report.dump(2) << '\n';
+    std::cout << "Frozen linear diagnostics written to " << json_path << std::endl;
 }
 }  // namespace gipc

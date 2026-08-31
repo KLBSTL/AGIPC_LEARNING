@@ -223,7 +223,7 @@ void GlobalLinearSystem::spmv(Float                         a,
                                b,
                                y);
     }
-    else
+    else if(m_spmv_mode == SpmvMode::SRBK)
     {
         m_spmv.warp_reduce_sym_spmv(a,
                                     gipc_global_triplet->block_values(),
@@ -234,10 +234,26 @@ void GlobalLinearSystem::spmv(Float                         a,
                                     b,
                                     y);
     }
+    else
+    {
+        const int threshold = m_spmv_mode == SpmvMode::Hybrid8 ? 8 : 16;
+        m_spmv.hybrid_sym_spmv(a,
+                               gipc_global_triplet->block_values(),
+                               gipc_global_triplet->block_row_indices(),
+                               gipc_global_triplet->block_col_indices(),
+                               gipc_global_triplet->h_unique_key_number,
+                               x,
+                               b,
+                               y,
+                               threshold);
+    }
 }
 
 void GlobalLinearSystem::run_frozen_linear_diagnostics()
 {
+    const auto diagnostic_mode = m_spmv_mode;
+    const bool diagnostic_is_hybrid = diagnostic_mode == SpmvMode::Hybrid8
+                                      || diagnostic_mode == SpmvMode::Hybrid16;
     const std::filesystem::path json_path = m_frozen_linear_diagnostics_path;
     const auto output_dir = json_path.has_parent_path() ? json_path.parent_path()
                                                         : std::filesystem::current_path();
@@ -278,6 +294,7 @@ void GlobalLinearSystem::run_frozen_linear_diagnostics()
     cudatool::DeviceDenseVector<Float> diagnostic_x;
     cudatool::DeviceDenseVector<Float> legacy_y(rhs.size());
     cudatool::DeviceDenseVector<Float> srbk_y(rhs.size());
+    cudatool::DeviceDenseVector<Float> selected_y(rhs.size());
     diagnostic_x.copy_from(host_x);
     m_spmv.legacy_sym_spmv(1.0,
                            gipc_global_triplet->block_values(),
@@ -295,13 +312,30 @@ void GlobalLinearSystem::run_frozen_linear_diagnostics()
                                 diagnostic_x.cview(),
                                 0.0,
                                 srbk_y.view());
+    if(diagnostic_is_hybrid)
+    {
+        const int threshold = diagnostic_mode == SpmvMode::Hybrid8 ? 8 : 16;
+        m_spmv.hybrid_sym_spmv(1.0,
+                               gipc_global_triplet->block_values(),
+                               gipc_global_triplet->block_row_indices(),
+                               gipc_global_triplet->block_col_indices(),
+                               triplet_count,
+                               diagnostic_x.cview(),
+                               0.0,
+                               selected_y.view(),
+                               threshold);
+    }
     CUDA_SAFE_CALL(cudaDeviceSynchronize());
     std::vector<Float> host_legacy_y;
     std::vector<Float> host_srbk_y;
+    std::vector<Float> host_selected_y;
     legacy_y.copy_to(host_legacy_y);
     srbk_y.copy_to(host_srbk_y);
+    if(diagnostic_is_hybrid)
+        selected_y.copy_to(host_selected_y);
     long double diff_sq = 0.0;
     long double legacy_sq = 0.0;
+    long double selected_diff_sq = 0.0;
     double max_abs_error = 0.0;
     for(size_t i = 0; i < host_legacy_y.size(); ++i)
     {
@@ -309,9 +343,21 @@ void GlobalLinearSystem::run_frozen_linear_diagnostics()
         diff_sq += static_cast<long double>(difference) * difference;
         legacy_sq += static_cast<long double>(host_legacy_y[i]) * host_legacy_y[i];
         max_abs_error = std::max(max_abs_error, std::abs(difference));
+        if(diagnostic_is_hybrid)
+        {
+            const double selected_difference =
+                host_legacy_y[i] - host_selected_y[i];
+            selected_diff_sq += static_cast<long double>(selected_difference)
+                                * selected_difference;
+        }
     }
     const double spmv_relative_error =
         std::sqrt(static_cast<double>(diff_sq / std::max(legacy_sq, 1e-300L)));
+    const double selected_spmv_relative_error =
+        diagnostic_is_hybrid
+            ? std::sqrt(static_cast<double>(selected_diff_sq
+                                            / std::max(legacy_sq, 1e-300L)))
+            : 0.0;
 
     cudatool::DeviceDenseVector<Float> preconditioned_rhs(rhs.size());
     apply_preconditioner(preconditioned_rhs.view(), m_b.cview());
@@ -337,11 +383,17 @@ void GlobalLinearSystem::run_frozen_linear_diagnostics()
 
     auto* pcg = dynamic_cast<PCGSolver*>(m_solver.get());
     CT_ASSERT(pcg, "frozen linear diagnostics requires PCGSolver");
-    const auto original_mode = m_spmv_mode;
+    const auto original_mode = diagnostic_mode;
     m_spmv_mode = SpmvMode::Legacy;
     Json legacy_trace = pcg->trace(m_x.view(), m_b.cview(), 100);
     m_spmv_mode = SpmvMode::SRBK;
     Json srbk_trace = pcg->trace(m_x.view(), m_b.cview(), 100);
+    Json selected_trace;
+    if(diagnostic_is_hybrid)
+    {
+        m_spmv_mode = original_mode;
+        selected_trace = pcg->trace(m_x.view(), m_b.cview(), 100);
+    }
     m_spmv_mode = original_mode;
 
     int first_residual_divergence = -1;
@@ -386,6 +438,11 @@ void GlobalLinearSystem::run_frozen_linear_diagnostics()
     report["spmv"] = {{"relative_error", spmv_relative_error},
                         {"max_abs_error", max_abs_error},
                         {"passed", spmv_relative_error <= 1e-10}};
+    if(diagnostic_is_hybrid)
+        report["selected_spmv"] = {
+            {"mode", to_string(diagnostic_mode)},
+            {"relative_error", selected_spmv_relative_error},
+            {"passed", selected_spmv_relative_error <= 1e-10}};
     report["preconditioner"] = {{"rhs_t_z", static_cast<double>(rhs_t_z)},
                                   {"rhs_t_z_positive", rhs_t_z > 0.0},
                                   {"same_instance_reused", true}};
@@ -394,15 +451,28 @@ void GlobalLinearSystem::run_frozen_linear_diagnostics()
             std::move(mas32_numerical);
     report["legacy_pcg"] = std::move(legacy_trace);
     report["srbk_pcg"] = std::move(srbk_trace);
+    if(diagnostic_is_hybrid)
+        report["selected_pcg"] = std::move(selected_trace);
     report["first_residual_divergence_iteration"] = first_residual_divergence;
     report["gates"] = {{"spmv_equivalent", spmv_relative_error <= 1e-10},
                          {"rhs_preconditioner_spd", rhs_t_z > 0.0},
                          {"legacy_trace_spd", trace_is_spd(report["legacy_pcg"])},
                          {"srbk_trace_spd", trace_is_spd(report["srbk_pcg"])}};
+    if(diagnostic_is_hybrid)
+    {
+        report["gates"]["selected_spmv_equivalent"] =
+            selected_spmv_relative_error <= 1e-10;
+        report["gates"]["selected_trace_spd"] =
+            trace_is_spd(report["selected_pcg"]);
+    }
     report["passed"] = report["gates"]["spmv_equivalent"].get<bool>()
                        && report["gates"]["rhs_preconditioner_spd"].get<bool>()
                        && report["gates"]["legacy_trace_spd"].get<bool>()
                        && report["gates"]["srbk_trace_spd"].get<bool>();
+    if(diagnostic_is_hybrid)
+        report["passed"] = report["passed"].get<bool>()
+                           && report["gates"]["selected_spmv_equivalent"].get<bool>()
+                           && report["gates"]["selected_trace_spd"].get<bool>();
 
     std::ofstream output(json_path, std::ios::trunc);
     output << report.dump(2) << '\n';

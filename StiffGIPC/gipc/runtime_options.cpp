@@ -27,7 +27,7 @@ std::string runtime_options_help()
            "  --cloth-mesh <OBJ_PATH>\n"
            "  --framework gipc|srbk|cemas-srbk|abd-cemas-srbk\n"
            "  --preconditioner block-diagonal|gpu-mas|cemas16|cemas32\n"
-           "  --spmv legacy|srbk\n"
+           "  --spmv legacy|srbk|hybrid8|hybrid16\n"
            "  --body-mode fem|hybrid-abd\n"
            "  --figure12-bunny-count 1|2\n"
            "  --figure12-collision-buffer-scale <VALUE>\n"
@@ -110,8 +110,14 @@ ParseResult parse_runtime_options(int argc, char** argv)
                     options.spmv = SpmvMode::Legacy;
                 else if(value == "srbk")
                     options.spmv = SpmvMode::SRBK;
+                else if(value == "hybrid8")
+                    options.spmv = SpmvMode::Hybrid8;
+                else if(value == "hybrid16")
+                    options.spmv = SpmvMode::Hybrid16;
                 else
-                    return invalid(options, "spmv must be legacy or srbk");
+                    return invalid(
+                        options,
+                        "spmv must be legacy, srbk, hybrid8, or hybrid16");
                 spmv_was_explicit = true;
             }
             else if(argument == "--body-mode")

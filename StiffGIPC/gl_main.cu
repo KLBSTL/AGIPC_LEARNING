@@ -2093,6 +2093,10 @@ int main(int argc, char** argv)
         metrics["legacy_srbk_max_abs_error"] = result.legacy_srbk_max_abs_error;
         metrics["legacy_srbk_max_relative_error"] =
             result.legacy_srbk_max_relative_error;
+        metrics["hybrid8_reference_max_abs_error"] =
+            result.hybrid8_reference_max_abs_error;
+        metrics["hybrid16_reference_max_abs_error"] =
+            result.hybrid16_reference_max_abs_error;
         std::cout << metrics.dump(2) << '\n';
         return result.passed ? 0 : 3;
     }

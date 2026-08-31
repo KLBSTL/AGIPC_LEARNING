@@ -15,6 +15,8 @@ struct SpmvEquivalenceResult
     double srbk_reference_max_abs_error   = 0.0;
     double legacy_srbk_max_abs_error      = 0.0;
     double legacy_srbk_max_relative_error = 0.0;
+    double hybrid8_reference_max_abs_error = 0.0;
+    double hybrid16_reference_max_abs_error = 0.0;
 };
 
 class Spmv
@@ -38,6 +40,16 @@ class Spmv
                               cudatool::CDenseVectorView<Float> x,
                               Float                         b,
                               cudatool::DenseVectorView<Float>  y);
+
+    void hybrid_sym_spmv(Float                         a,
+                          Eigen::Matrix3d*              triplet_values,
+                          int*                          row_ids,
+                          int*                          col_ids,
+                          int                           triplet_count,
+                          cudatool::CDenseVectorView<Float> x,
+                          Float                         b,
+                          cudatool::DenseVectorView<Float>  y,
+                          int                           short_row_threshold);
 };
 
 SpmvEquivalenceResult run_spmv_equivalence_self_test();

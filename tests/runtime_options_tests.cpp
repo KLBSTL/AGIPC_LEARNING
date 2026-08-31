@@ -232,6 +232,38 @@ int main()
     }
 
     {
+        const auto result = parse({"gipc",
+                                   "--scene",
+                                   "paper-fig12-coupling-scaled",
+                                   "--spmv",
+                                   "hybrid8",
+                                   "--preconditioner",
+                                   "gpu-mas",
+                                   "--body-mode",
+                                   "fem"});
+        require(result.ok, "the experimental threshold-8 hybrid SpMV must parse");
+        require(std::string(gipc::to_string(result.options.spmv)) == "hybrid8",
+                "the threshold-8 hybrid SpMV must be retained by the parser");
+        require(result.options.framework == "custom",
+                "an experimental hybrid SpMV must not impersonate a paper framework");
+    }
+
+    {
+        const auto result = parse({"gipc",
+                                   "--scene",
+                                   "paper-fig12-coupling-scaled",
+                                   "--spmv",
+                                   "hybrid16",
+                                   "--preconditioner",
+                                   "gpu-mas",
+                                   "--body-mode",
+                                   "fem"});
+        require(result.ok, "the experimental threshold-16 hybrid SpMV must parse");
+        require(std::string(gipc::to_string(result.options.spmv)) == "hybrid16",
+                "the threshold-16 hybrid SpMV must be retained by the parser");
+    }
+
+    {
         const auto result = parse({"gipc", "--spmv", "unknown"});
         require(!result.ok && result.exit_code == 2,
                 "unknown SpMV modes must be rejected with exit code 2");
@@ -297,8 +329,9 @@ int main()
                 "help must expose the algebraic self-test");
         require(result.help.find("--cloth-mesh") != std::string::npos,
                 "help must expose the Figure 12 cloth mesh override");
-        require(result.help.find("--spmv legacy|srbk") != std::string::npos,
-                "help must expose the two real SpMV implementations");
+        require(result.help.find("--spmv legacy|srbk|hybrid8|hybrid16")
+                    != std::string::npos,
+                "help must expose the baseline and experimental SpMV implementations");
         require(result.help.find("--spmv-self-test") != std::string::npos,
                 "help must expose the fixed-Hessian equivalence gate");
         require(result.help.find("--mas32-self-test") != std::string::npos,

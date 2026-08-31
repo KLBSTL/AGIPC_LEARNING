@@ -242,4 +242,6 @@ class GIPC
     std::unique_ptr<gipc::GlobalLinearSystem> m_global_linear_system;
 };
 
+void set_gipc_merged_timing_breakdown_enabled(bool enabled);
+
 #endif

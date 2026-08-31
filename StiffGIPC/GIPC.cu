@@ -7,6 +7,16 @@
 //
 
 #include "GIPC.cuh"
+
+namespace
+{
+bool g_merged_timing_breakdown_enabled = true;
+}
+
+void set_gipc_merged_timing_breakdown_enabled(bool enabled)
+{
+    g_merged_timing_breakdown_enabled = enabled;
+}
 #include <gipc/gipc.h>
 #include "cuda_tools/cuda_tools.h"
 #include "GIPC_PDerivative.cuh"
@@ -11284,7 +11294,8 @@ void   GIPC::IPC_Solver(device_TetraData& TetMesh)
 
     stats.at_current_frame()["timer"] =
         gipc::GlobalTimer::current()->report_merged_as_json();
-    gipc::GlobalTimer::current()->print_merged_timings();
+    if(g_merged_timing_breakdown_enabled)
+        gipc::GlobalTimer::current()->print_merged_timings();
     gipc::GlobalTimer::current()->clear();
     stats.write_to_file(std::string{gipc::output_dir()} + "/stats.json");
 

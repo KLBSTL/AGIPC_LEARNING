@@ -1775,6 +1775,7 @@ void init_headless()
     ipc.IPC_dt = runtime_options.dt;
     std::cerr << "[headless] build_system" << std::endl;
     ipc.build_gipc_system(d_tetMesh);
+    set_gipc_merged_timing_breakdown_enabled(false);
     ipc.set_spmv_mode(runtime_options.spmv);
     ipc.set_frozen_linear_diagnostics_path(
         runtime_options.frozen_linear_diagnostics_path);

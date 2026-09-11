@@ -1,6 +1,6 @@
 # AGIPC Implementation Mapping
 
-Status: 2026-09-11, experimental AGIPC-Core dispatch validated on the frozen SPD fixture, one-frame cube, a 30-frame ground-contact transition, a reduced mixed ABD/FEM scene, and a 35-frame reduced cloth-on-fixed-ABD self-contact scene. Symmetric-Hessian and paper-BVH modes remain unavailable.
+Status: 2026-09-11, experimental AGIPC-Core dispatch validated on the frozen SPD fixture, one-frame cube, a 30-frame ground-contact transition, a reduced mixed ABD/FEM scene, a 35-frame reduced cloth-on-fixed-ABD self-contact scene, and a 16,641-node no-contact capacity preflight. Symmetric-Hessian and paper-BVH modes remain unavailable.
 
 | Paper component | Implementation | Current status |
 |---|---|---|

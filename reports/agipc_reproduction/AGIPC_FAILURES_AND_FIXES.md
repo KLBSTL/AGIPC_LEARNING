@@ -35,3 +35,11 @@ A 30-frame reduced Figure 12 run completed with finite vertices, but all 49,600 
 ## Reduced Figure 15 is a correctness gate, not a speedup result
 
 The replacement fixture fixes an ABD sphere and drops a 289-node cloth onto it. It exercises changing strain tags and thousands of self-collision pair samples, and both solvers finish 35 frames without finite-value or penetration failures. Direct final-state export shows `0.03314` RMS paired-vertex error (`5.78%` of baseline RMS displacement), which is compatible with the deliberately different AGIPC and StiffGIPC Newton stopping semantics but rules out claiming identical trajectories. The measured AGIPC-Core run was `1.90x` slower, with 204 versus 141 Newton iterations and 4,908 versus 1,890 linear iterations. The result is retained as reduced-scale overhead evidence; paper-scale speedup remains untested.
+
+## Partial reduction blocks skipped a required barrier
+
+The movement-norm maximum kernels returned out-of-range lanes before a block-wide `__syncthreads()` and used a full-warp shuffle mask when only the low lanes of warp zero remained active. Meshes whose vertex counts are not multiples of the 256-thread block size therefore relied on undefined CUDA synchronization behavior. Out-of-range lanes now contribute the neutral maximum value, every block lane reaches the barrier, and the second-level warp reduction uses its exact active mask. The 18,288-vertex preflight exercises a 112-lane final block and completes in both solver modes.
+
+## Local-code-page paths failed strict JSON output
+
+The first 16K attempts completed their GPU frame but exited with code 1 while serializing metrics. A Chinese `--cloth-mesh` path arrived through `char** argv` as non-UTF-8 local-code-page bytes, and nlohmann JSON's strict dump rejected the string. Metrics output now uses the replacement error handler, which prevents the run from being lost. Because replacement cannot reconstruct the original Unicode characters, recorded benchmark paths should use the ASCII `S:`/`T:` aliases; hashes remain the authoritative asset identity.

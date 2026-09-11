@@ -476,13 +476,15 @@ __global__ void _reduct_max_double3_to_double(const double3* _double3Dim, double
 
     extern __shared__ double tep[];
 
-    if(idx >= number)
-        return;
-    //int cfid = tid + CONFLICT_FREE_OFFSET(tid);
-    double3 tempMove = _double3Dim[idx];
-
-    double temp =
-        std::fmax(std::fmax(std::fabs(tempMove.x), std::fabs(tempMove.y)), std::fabs(tempMove.z));
+    // All lanes must reach the block barrier. Missing lanes in the final block
+    // contribute the neutral value for a maximum.
+    double temp = 0.0;
+    if(idx < number)
+    {
+        const double3 tempMove = _double3Dim[idx];
+        temp = std::fmax(std::fmax(std::fabs(tempMove.x), std::fabs(tempMove.y)),
+                         std::fabs(tempMove.z));
+    }
 
     int    warpTid = threadIdx.x % 32;
     int    warpId  = (threadIdx.x >> 5);
@@ -516,9 +518,10 @@ __global__ void _reduct_max_double3_to_double(const double3* _double3Dim, double
         temp = tep[threadIdx.x];
 
         //	warpNum = ((tidNum + 31) >> 5);
+        const unsigned int activeMask = (1u << warpNum) - 1u;
         for(int i = 1; i < warpNum; i = (i << 1))
         {
-            double tempMin = __shfl_down_sync(0xffffffff, temp, i);
+            double tempMin = __shfl_down_sync(activeMask, temp, i);
             temp           = std::max(temp, tempMin);
         }
     }
@@ -657,10 +660,9 @@ __global__ void _reduct_max_double(double* _double1Dim, int number)
 
     extern __shared__ double tep[];
 
-    if(idx >= number)
-        return;
-    //int cfid = tid + CONFLICT_FREE_OFFSET(tid);
-    double temp = _double1Dim[idx];
+    // All lanes must reach the block barrier. Missing lanes in the final block
+    // contribute the neutral value for a maximum.
+    double temp = idx < number ? _double1Dim[idx] : 0.0;
 
     __threadfence();
 
@@ -697,9 +699,10 @@ __global__ void _reduct_max_double(double* _double1Dim, int number)
         temp = tep[threadIdx.x];
 
         //	warpNum = ((tidNum + 31) >> 5);
+        const unsigned int activeMask = (1u << warpNum) - 1u;
         for(int i = 1; i < warpNum; i = (i << 1))
         {
-            double tempMax = __shfl_down_sync(0xffffffff, temp, i);
+            double tempMax = __shfl_down_sync(activeMask, temp, i);
             temp           = std::max(temp, tempMax);
         }
     }

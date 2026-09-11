@@ -140,7 +140,8 @@ Test rest tet `(0,0,0),(1,0,0),(0,1,0),(0,0,1)`; triangle uses first three point
 - [ ] Fig13 first: same ball, E=1e4/1e5/1e6/1e7, dt=.01. Establish active-DoF behavior and stage costs before comparing paper speedup.
 - [ ] Fig14: same dragon E=3e5, dt=.005/.01/.02/.04, physical duration1.5s, document fractional-frame policy. Lower dt should yield lower active ratios.
 - [x] Fig15 reduced preflight: 289-node cloth on a fixed ABD sphere at E=1e6, dt=.01; active ratio `0.02389`, direct final-state error recorded, negative single-pair runtime retained.
-- [ ] Fig15: cloth on ABD sphere E=1e6, dt=.01, 10K/51K/92K first; only larger runs after measured capacity headroom.
+- [x] Fig15 capacity preflight: existing 16,641-node cloth on the fixed ABD sphere at E=1e6, dt=.01; both CEMAS16 routes pass one no-contact frame at 49,935 fine DoF, with 21 final AGIPC coarse DoF. This is not an exact paper asset.
+- [ ] Fig15 exact assets: cloth on ABD sphere E=1e6, dt=.01, 10K/51K/92K first; only larger runs after measured capacity headroom.
 - [ ] Warm up and interleave S/A/A/S until each method has >=3 measured trials. Hash every executable/mesh; store immutable JSON in perf_history and CSV/JSON summaries.
 - [ ] Complete AGIPC_IMPLEMENTATION_MAPPING.md, AGIPC_NUMERICAL_VALIDATION.md, AGIPC_PERFORMANCE_ANALYSIS.md, AGIPC_FAILURES_AND_FIXES.md and AGIPC_PAPER_COMPARISON.md with actual results. Separate numerical/trend/quantitative levels; retain negative results.
 

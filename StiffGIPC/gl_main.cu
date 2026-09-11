@@ -2034,14 +2034,22 @@ int run_headless()
         if(!metrics_path.parent_path().empty())
             std::filesystem::create_directories(metrics_path.parent_path());
         std::ofstream output(metrics_path);
-        output << metrics.dump(2) << '\n';
+        output << metrics.dump(2,
+                               ' ',
+                               false,
+                               gipc::Json::error_handler_t::replace)
+               << '\n';
         if(!output)
         {
             std::cerr << "failed to write metrics: " << metrics_path << '\n';
             return 3;
         }
     }
-    std::cout << metrics.dump() << '\n';
+    std::cout << metrics.dump(-1,
+                              ' ',
+                              false,
+                              gipc::Json::error_handler_t::replace)
+              << '\n';
     return finite_vertices ? 0 : 3;
 }
 

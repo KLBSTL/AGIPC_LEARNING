@@ -19,3 +19,18 @@ The first true mixed-contact timing fixture uses a 289-vertex FEM cloth, one fix
 The observed time ratio is `1.90`, so the current AGIPC-Core route is slower on this fixture. Its final active-DoF ratio is only `2.389%`, but the present implementation pays for mixed Galerkin expansion, block-Jacobi coarse PCG, up to ten fine post-PCG iterations, diagnostics, and conservative fallback. It also follows the paper current-direction Newton gate, while the baseline retains the original previous-direction scene threshold; iteration and collision-pair totals are therefore expected to differ.
 
 This is one paired measurement, not a statistical benchmark. Timing varied materially across process warm-up in earlier probes, although all observed pairs showed AGIPC overhead at this size. Performance acceptance still requires warm-up and interleaved StiffGIPC/AGIPC trials, at least three measured runs per method, exact executable and mesh hashes, stage timing, and the 10K/51K/92K Figure 15 meshes before larger cases.
+
+## 16,641-node capacity preflight
+
+An existing 129x129 cloth provides a larger but non-paper-exact Figure 15 input: 16,641 FEM vertices, 32,768 cloth triangles, 18,288 total vertices, and 49,935 mixed fine DoF. One Release frame with the same CEMAS16+SRBK framework produced:
+
+| Metric | AGIPC-Core | StiffGIPC |
+|---|---:|---:|
+| Simulation time | 193.48 ms | 162.87 ms |
+| Applied Newton steps | 2 | 2 |
+| Linear iterations | 19 | 32 |
+| Final coarse DoF | 21 | n/a |
+| Candidate adoptions / fallbacks | 2 / 1 | n/a |
+| Finite / ground penetration | yes / 0 | yes / 0 |
+
+The AGIPC time ratio is `1.19`, despite a lower reported iteration count. The final active ratio is `21 / 49935 = 0.0421%`, because the no-contact first frame collapses the full planar cloth to one rank-aware affine aggregate. This is a scale/capacity smoke result with no contact and only one timing sample. It does not replace the required warm, interleaved multi-frame measurements on exact paper meshes.

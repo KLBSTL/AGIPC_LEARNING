@@ -43,3 +43,7 @@ The movement-norm maximum kernels returned out-of-range lanes before a block-wid
 ## Local-code-page paths failed strict JSON output
 
 The first 16K attempts completed their GPU frame but exited with code 1 while serializing metrics. A Chinese `--cloth-mesh` path arrived through `char** argv` as non-UTF-8 local-code-page bytes, and nlohmann JSON's strict dump rejected the string. Metrics output now uses the replacement error handler, which prevents the run from being lost. Because replacement cannot reconstruct the original Unicode characters, recorded benchmark paths should use the ASCII `S:`/`T:` aliases; hashes remain the authoritative asset identity.
+
+## Large contact states can stall the warp-hash hierarchy
+
+The 16,641-node, 35-frame contact run completed safely, but only 351 of 734 per-Newton mappings eliminated every collapsible edge. Another 334 reached a fixed point with remaining inter-group connectivity, and 49 hit the configured eight-level cap. The implementation correctly marks these maps incomplete and falls back to the fine CEMAS16 solve, so numerical safety is preserved, but 383 mapping-stage fallbacks prevent the adaptive route from controlling those Newton steps. Of the 351 completed mappings, a further 165 failed the downstream candidate gate. This is now the leading performance blocker: AGIPC took 2.98x baseline time and 2.59x as many applied Newton steps. Production mapping needs a paper-consistent way to carry cross-group connectivity without a fixed point before performance benchmarking continues.

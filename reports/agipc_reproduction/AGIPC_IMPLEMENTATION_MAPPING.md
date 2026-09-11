@@ -1,6 +1,6 @@
 # AGIPC Implementation Mapping
 
-Status: 2026-09-11, experimental AGIPC-Core dispatch validated on the frozen SPD fixture, one-frame cube, a 30-frame ground-contact transition, a reduced mixed ABD/FEM scene, a 35-frame reduced cloth-on-fixed-ABD self-contact scene, and a 16,641-node no-contact capacity preflight. Symmetric-Hessian and paper-BVH modes remain unavailable.
+Status: 2026-09-11, experimental AGIPC-Core dispatch validated on the frozen SPD fixture, one-frame cube, a 30-frame ground-contact transition, a reduced mixed ABD/FEM scene, a 35-frame reduced cloth-on-fixed-ABD self-contact scene, and a 35-frame 16,641-node contact gate. Large-contact warp-hash completion, symmetric-Hessian, and paper-BVH work remain open.
 
 | Paper component | Implementation | Current status |
 |---|---|---|
@@ -17,4 +17,4 @@ Status: 2026-09-11, experimental AGIPC-Core dispatch validated on the frozen SPD
 | Reduced Figure 15 fixture and state output | `StiffGIPC/gl_main.cu`: `set_case_fig15_cloth_abd_scaled`, `run_headless`; `StiffGIPC/gipc/runtime_options.*` | Fixed ABD sphere plus independently falling FEM cloth at `E=1e6`, `dt=.01`; JSON contact/terminal summaries and optional FP64 FEM CSV support direct paired-state error |
 | MAS capacity prerequisite | `StiffGIPC/gipc/hierarchy_capacity.h`, `StiffGIPC/MASPreconditioner.*` | Semantic capacity alignment and bounds checks backported |
 
-Still required before treating `--solver agipc-core` as broadly validated: explicit contact appearance/disappearance checks within Newton iterations, failure-mode fallback fixtures beyond dimension mismatch and near-zero residual, equal-frame state comparisons on larger meshes, and repeated performance experiments. Symmetric Hessian and stackless BVH are separate remaining stages. MAS on the coarse system remains a later comparison; the current block-Jacobi coarse preconditioner is an intermediate route.
+Still required before treating `--solver agipc-core` as broadly validated: explicit contact appearance/disappearance checks within Newton iterations, a paper-consistent resolution for cross-group warp-hash fixed points, downstream candidate-failure accounting, and repeated performance experiments after adoption improves. Symmetric Hessian and stackless BVH are separate remaining stages. MAS on the coarse system remains a later comparison; the current block-Jacobi coarse preconditioner is an intermediate route.

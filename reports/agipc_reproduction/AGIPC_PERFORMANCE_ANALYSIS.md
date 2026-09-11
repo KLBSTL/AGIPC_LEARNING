@@ -34,3 +34,20 @@ An existing 129x129 cloth provides a larger but non-paper-exact Figure 15 input:
 | Finite / ground penetration | yes / 0 | yes / 0 |
 
 The AGIPC time ratio is `1.19`, despite a lower reported iteration count. The final active ratio is `21 / 49935 = 0.0421%`, because the no-contact first frame collapses the full planar cloth to one rank-aware affine aggregate. This is a scale/capacity smoke result with no contact and only one timing sample. It does not replace the required warm, interleaved multi-frame measurements on exact paper meshes.
+
+## 16,641-node contact pair
+
+The same cloth was run for 35 frames so that it contacted the fixed ABD sphere. This remains a non-paper-exact asset and a single diagnostic pair.
+
+| Metric | AGIPC-Core | StiffGIPC |
+|---|---:|---:|
+| Simulation time | 57.678 s | 19.365 s |
+| Applied Newton steps | 699 | 270 |
+| Linear iterations | 50,224 | 18,265 |
+| Self-collision pair samples | 110,475 | 36,478 |
+| Peak self-collision pairs | 230 | 259 |
+| Mapping completions / attempts | 351 / 734 | n/a |
+| Candidate adoptions / fallbacks | 186 / 548 | n/a |
+| Final coarse DoF | 60 | n/a |
+
+The measured time ratio is `2.98`; AGIPC also used 2.59x the Newton steps and 2.75x the reported linear iterations. Mapping remained incomplete on 383 attempts, while another 165 completed mappings failed candidate validation. The final active ratio of `60 / 49935 = 0.1202%` shows that DoF reduction itself is aggressive, but low mapping completion and adoption rates erase its benefit. The accumulated adaptive shadow pipeline time was `6.607 s`, about 11.5% of AGIPC simulation time; the larger cost comes from extra Newton work and fine-solver fallbacks. Repeated timing is deferred until those controls improve.

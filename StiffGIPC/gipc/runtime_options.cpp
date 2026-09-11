@@ -1,6 +1,7 @@
 #include <gipc/runtime_options.h>
 
 #include <stdexcept>
+#include <cmath>
 
 namespace gipc
 {
@@ -22,7 +23,7 @@ std::string runtime_options_help()
 {
     return "Usage: gipc [options]\n"
            "  --scene stiff-bunny-drop|paper-fig12-coupling-scaled\n"
-           "  --solver stiffgipc|agipc\n"
+           "  --solver stiffgipc|agipc-core|agipc-symhessian|agipc-paper (adaptive solvers pending)\n"
            "  --tet-mesh <MSH_PATH>\n"
            "  --cloth-mesh <OBJ_PATH>\n"
            "  --framework gipc|srbk|cemas-srbk|abd-cemas-srbk\n"
@@ -45,7 +46,8 @@ std::string runtime_options_help()
            "  --agipc-max-levels <N>\n"
            "  --agipc-fine-correction-iterations <N>\n"
            "  --agipc-diagnostics\n"
-           "  --agipc-self-test\n"
+           "  --agipc-self-test (criterion GPU gate)\n"
+           "  --agipc-post-cg-max <N> (alias; zero allowed for ablation)\n"
            "  --help\n";
 }
 
@@ -84,10 +86,14 @@ ParseResult parse_runtime_options(int argc, char** argv)
                 const std::string value = require_value(i, argument);
                 if(value == "stiffgipc")
                     options.solver = SolverMode::StiffGIPC;
-                else if(value == "agipc")
+                else if(value == "agipc" || value == "agipc-core")
                     options.solver = SolverMode::AGIPC;
+                else if(value == "agipc-symhessian")
+                    options.solver = SolverMode::AGIPCSymHessian;
+                else if(value == "agipc-paper")
+                    options.solver = SolverMode::AGIPCPaper;
                 else
-                    return invalid(options, "solver must be stiffgipc or agipc");
+                    return invalid(options, "solver must be stiffgipc, agipc-core, agipc-symhessian or agipc-paper");
             }
             else if(argument == "--tet-mesh")
                 options.tet_mesh = require_value(i, argument);
@@ -158,7 +164,7 @@ ParseResult parse_runtime_options(int argc, char** argv)
                 options.agipc_mapping = require_value(i, argument);
             else if(argument == "--agipc-max-levels")
                 options.agipc_max_levels = std::stoi(require_value(i, argument));
-            else if(argument == "--agipc-fine-correction-iterations")
+            else if(argument == "--agipc-fine-correction-iterations" || argument == "--agipc-post-cg-max")
                 options.agipc_fine_correction_iterations =
                     std::stoi(require_value(i, argument));
             else if(argument == "--agipc-diagnostics")
@@ -274,14 +280,15 @@ ParseResult parse_runtime_options(int argc, char** argv)
                        "frozen linear diagnostics requires the headless Figure 12 scene with gpu-mas");
     if(frames_were_explicit && options.frames <= 0)
         return invalid(options, "frames must be positive");
-    if(options.young_modulus <= 0.0 || options.dt <= 0.0 || options.agipc_threshold <= 0.0)
+    if(options.young_modulus <= 0.0 || options.dt <= 0.0 || options.agipc_threshold <= 0.0
+       || !std::isfinite(options.agipc_threshold))
         return invalid(options, "Young modulus, dt, and AGIPC threshold must be positive");
     if(options.agipc_mapping != "matching" && options.agipc_mapping != "warp-hash")
         return invalid(options, "AGIPC mapping must be matching or warp-hash");
     if(options.agipc_max_levels < 1 || options.agipc_max_levels > 16)
         return invalid(options, "AGIPC max levels must be in 1..16");
-    if(options.agipc_fine_correction_iterations <= 0)
-        return invalid(options, "AGIPC fine correction iterations must be positive");
+    if(options.agipc_fine_correction_iterations < 0)
+        return invalid(options, "AGIPC fine correction iterations must be nonnegative");
 
     ParseResult result;
     result.options = std::move(options);

@@ -1,0 +1,36 @@
+# AGIPC Numerical Validation
+
+Date: 2026-09-11. Build: Release, CUDA 13.0, `sm_86`, Visual Studio 2022. The executable is a diagnostic build and still reports `solver=stiffgipc`.
+
+## Focused GPU gate
+
+Command:
+
+```text
+build-agipc-reproduction/Release/gipc.exe --agipc-self-test
+```
+
+Result: exit 0.
+
+| Gate | Evidence |
+|---|---|
+| Criterion | 10 cases; max absolute tensor error `4.098284211995207e-17`; history, strict equality, monotonic thresholds, boundary and NaN protection passed |
+| Mapping | 5 cases; indirect connectivity, protected edge, 7-node tail, 32-versus-33 affine boundary, hierarchy and repeat determinism passed |
+| Mixed Galerkin | relative matrix error `8.747661209037898e-17`; RHS error `0`; symmetry error `9.308113199029161e-18`; SPD Cholesky passed |
+| Mixed indexing | all `1x1/1x4/4x1/4x4` shapes passed; adjoint error `5.551115123125783e-17` |
+| Geometry rank fixtures | planar affine basis rank `3`; collinear rank `2`, both detected as rank deficient |
+| Coarse PCG | converged; projected residual ratio `6.689865418268851e-4` under the paper `1e-3` tolerance; fine residual ratio after prolongation `0.29712101078523767`; `rhs_dot_direction=4.335198384840098` |
+
+## One-frame real-system gate
+
+Command used the existing short drive because the CUDA/CMake cache was configured at `S:`:
+
+```text
+S:/build-agipc-reproduction/Release/gipc.exe --scene stiff-bunny-drop --tet-mesh S:/Assets/sorted_mesh/cube_sorted.16.msh --frames 1 --headless --agipc-diagnostics --metrics-path S:/perf_diag/agipc_coarse_pcg_cube.json
+```
+
+Result: exit 0. Eight FEM nodes mapped to one translational coarse node; `child_sum=8`, remaining collapsible edges `0`, 26 fine unique blocks reduced to one coarse block, and invalid entries `0`. Coarse PCG converged in one iteration without nonpositive curvature.
+
+Compared with `perf_diag/stiffgipc_cube_baseline.json`: `minimum_y` delta `0`, identical Newton count `2`, identical fine PCG total `5`, identical penetration `0`, and finite vertices in both runs. This confirms that the current shadow path does not modify the production direction.
+
+These checks establish criterion, mapping, mixed Galerkin, coarse PCG, and prolongation arithmetic. They do not establish an end-to-end AGIPC solver or a speedup.

@@ -8,7 +8,9 @@ namespace gipc
 enum class SolverMode
 {
     StiffGIPC,
-    AGIPC
+    AGIPC,
+    AGIPCSymHessian,
+    AGIPCPaper
 };
 
 struct RuntimeOptions

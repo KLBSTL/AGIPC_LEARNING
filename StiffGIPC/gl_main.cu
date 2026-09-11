@@ -7,6 +7,7 @@
 //
 
 #include "GL/glew.h"
+#include <agipc/agipc_criterion.cuh>
 #include "GL/freeglut.h"
 #include <fstream>
 #include <iostream>
@@ -1579,6 +1580,9 @@ void initScene()
 
     ipc.buildBVH();
     ipc.init(tetMesh.meanMass, tetMesh.meanVolum, tetMesh.minConer, tetMesh.maxConer, linear_system_buff_scale);
+    if(runtime_options.agipc_diagnostics)
+        agipc::initialize_criterion(tetMesh,runtime_options.agipc_threshold,
+                                    runtime_options.agipc_max_levels);
 
     printf("bboxDiagSize2: %f\n", ipc.bboxDiagSize2);
     printf("maxConer: %f  %f   %f           minCorner: %f  %f   %f\n",
@@ -1832,6 +1836,11 @@ int run_headless()
                                       ? "agipc"
                                       : "stiffgipc";
     metrics["tet_mesh"]         = runtime_options.tet_mesh;
+    metrics["agipc_criterion_enabled"] = runtime_options.agipc_diagnostics;
+    if(runtime_options.agipc_diagnostics)
+        metrics["agipc_criterion_threshold"] = runtime_options.agipc_threshold;
+    if(runtime_options.agipc_diagnostics)
+        metrics["agipc_criterion"] = agipc::criterion_summary();
     metrics["cloth_mesh"]       = runtime_options.cloth_mesh;
     metrics["framework"]        = runtime_options.framework;
     metrics["preconditioner"]   = runtime_options.preconditioner;
@@ -2077,6 +2086,32 @@ int main(int argc, char** argv)
         return 0;
     }
     runtime_options = parsed_options.options;
+    if(runtime_options.solver != gipc::SolverMode::StiffGIPC)
+    {
+        std::cerr << "AGIPC solver unavailable: validated shadow stages only; adoption and post-correction gates not passed.\n";
+        return 2;
+    }
+    if(runtime_options.agipc_self_test)
+    {
+        Init_CUDA();
+        try
+        {
+            gipc::Json result;
+            result["criterion"] = agipc::criterion_self_test();
+            result["mapping"] = agipc::mapping_self_test();
+            result["galerkin"] = agipc::galerkin_self_test();
+            result["passed"] = result["criterion"]["passed"].get<bool>()
+                               && result["mapping"]["passed"].get<bool>()
+                               && result["galerkin"]["passed"].get<bool>();
+            std::cout << result.dump(2) << '\n';
+        }
+        catch(const std::exception& error)
+        {
+            std::cerr << "AGIPC self-test failed: " << error.what() << '\n';
+            return 3;
+        }
+        return 0;
+    }
     if(runtime_options.spmv_self_test)
     {
         Init_CUDA();

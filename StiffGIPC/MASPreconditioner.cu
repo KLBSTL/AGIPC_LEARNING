@@ -1697,6 +1697,9 @@ void MASPreconditioner::PrefixSumLx(int level)
     if(number < 1)
         return;
     int levelBegin = h_clevelSize.y;
+    if(levelBegin < 0 || static_cast<size_t>(levelBegin)>going_next_capacity
+       || static_cast<size_t>(number)>going_next_capacity-static_cast<size_t>(levelBegin))
+        throw std::runtime_error("MAS hierarchy write exceeds aligned capacity");
     int blockSize  = BANKSIZE * BANKSIZE;
     int numBlocks  = (number + blockSize - 1) / blockSize;
 
@@ -1806,6 +1809,8 @@ int MASPreconditioner::ReorderRealtime(int cpNum)
     CUDA_SAFE_CALL(cudaMemcpy(&h_clevelSize, d_levelSize + levelnum, sizeof(int2), cudaMemcpyDeviceToHost));
 
     totalNumberClusters = h_clevelSize.y;
+    if(totalNumberClusters<0 || static_cast<size_t>(totalNumberClusters)>going_next_capacity)
+        throw std::runtime_error("MAS cluster count exceeds aligned capacity");
 
     AggregationKernel();
 
@@ -2306,8 +2311,11 @@ void MASPreconditioner::initPreconditioner_Neighbor(int vertNum,
     CUDA_SAFE_CALL(cudaMalloc((void**)&d_coarseSpaceTables,
                               vertNum * levelnum * sizeof(int)));
     CUDA_SAFE_CALL(cudaMalloc((void**)&d_levelSize, (levelnum + 1) * sizeof(int2)));
+    going_next_capacity = gipc::hierarchy_capacity(
+        static_cast<size_t>(vertNum),static_cast<size_t>(maxNodes),
+        static_cast<size_t>(levelnum),BANKSIZE);
     CUDA_SAFE_CALL(cudaMalloc((void**)&d_goingNext,
-                              vertNum * levelnum * sizeof(unsigned int)));
+                              going_next_capacity * sizeof(unsigned int)));
     CUDA_SAFE_CALL(cudaMalloc((void**)&d_prefixOriginal, vertNum * sizeof(unsigned int)));
     CUDA_SAFE_CALL(cudaMalloc((void**)&d_nextPrefix, vertNum * sizeof(unsigned int)));
     CUDA_SAFE_CALL(cudaMalloc((void**)&d_nextPrefixSum, vertNum * sizeof(unsigned int)));

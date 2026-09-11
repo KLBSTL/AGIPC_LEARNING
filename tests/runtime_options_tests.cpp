@@ -1,4 +1,5 @@
 #include <gipc/runtime_options.h>
+#include <gipc/hierarchy_capacity.h>
 
 #include <cstdlib>
 #include <iostream>
@@ -28,6 +29,14 @@ gipc::ParseResult parse(std::vector<std::string> arguments)
 
 int main()
 {
+    require(gipc::hierarchy_capacity(38386,38386,4,32)==38400*4,
+            "MAS capacity must include level alignment");
+    require(gipc::hierarchy_capacity(1001,1024,6,32)==1024*6,
+            "MAS capacity must include mapped domain");
+    require(parse({"gipc","--solver","agipc-core","--agipc-post-cg-max","0"}).ok,
+            "core mode and post0 ablation must parse");
+    require(parse({"gipc","--solver","agipc-paper"}).ok,"paper mode must parse");
+    require(!parse({"gipc","--agipc-threshold","nan"}).ok,"NaN threshold must fail");
     {
         const auto result = parse({"gipc"});
         require(result.ok, "default options must parse");

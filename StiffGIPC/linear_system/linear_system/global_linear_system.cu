@@ -5,6 +5,7 @@
 #include <gipc/utils/timer.h>
 #include <linear_system/solver/pcg_solver.h>
 #include <linear_system/preconditioner/traditional_mas32_preconditioner.h>
+#include <agipc/agipc_criterion.cuh>
 
 #include <cmath>
 #include <filesystem>
@@ -80,6 +81,11 @@ bool GlobalLinearSystem::build_linear_system()
         start_preconditioner_id++;
     }
     convert_new();
+
+    // Gate C is diagnostic-only: assemble PTAP/PTb without changing the fine solve.
+    agipc::update_galerkin_shadow(*gipc_global_triplet,
+                                  m_b.buffer_view().data(),
+                                  total_rhs_count);
 
     if(m_global_preconditioner)
         m_global_preconditioner->do_assemble(*gipc_global_triplet);

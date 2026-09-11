@@ -7,6 +7,7 @@
 //
 
 #include "device_fem_data.cuh"
+#include <gipc/hierarchy_capacity.h>
 #include "eigen_data.h"
 #include <cuda_tools/cuda_all.h>
 #include "linear_system/linear_system/global_matrix.h"
@@ -15,6 +16,7 @@ class MASPreconditioner
 {
 
     int totalNodes              = 0;
+    std::size_t going_next_capacity = 0;
     int totalMapNodes           = 0;
     int levelnum                = 0;
     int collision_node_Offset   = 0;

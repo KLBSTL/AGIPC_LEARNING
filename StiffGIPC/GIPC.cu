@@ -7,6 +7,7 @@
 //
 
 #include "GIPC.cuh"
+#include <agipc/agipc_criterion.cuh>
 
 namespace
 {
@@ -10891,6 +10892,7 @@ int              GIPC::solve_subIP(device_TetraData& TetMesh,
               << std::endl;
 
     stats_at_current_frame["newton"] = gipc::Json::array();
+    agipc::begin_criterion_step(TetMesh);
 
     int iterCap = 10000, k = 0;
 
@@ -10915,6 +10917,12 @@ int              GIPC::solve_subIP(device_TetraData& TetMesh,
 
         cudaEventRecord(start);
         timemakePd += computeGradientAndHessian(TetMesh);
+        auto criterion = agipc::update_criterion(TetMesh);
+        if(!criterion.is_null())
+        {
+            stats_at_current_frame["newton"].back()["agipc_criterion"] = std::move(criterion);
+            stats_at_current_frame["newton"].back()["agipc_mapping"] = agipc::update_mapping();
+        }
 
 
         double distToOpt_PN = calcMinMovement(_moveDir, pcg_data.squeue, vertexNum);

@@ -31,6 +31,7 @@ struct RuntimeOptions
     double      dt            = 0.01;
     bool        headless      = false;
     std::string metrics_path;
+    std::string fem_final_state_path;
     double      agipc_threshold = 5e-5;
     std::string agipc_mapping   = "warp-hash";
     int         agipc_max_levels = 8;

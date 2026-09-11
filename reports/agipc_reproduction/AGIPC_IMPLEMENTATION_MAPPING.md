@@ -1,6 +1,6 @@
 # AGIPC Implementation Mapping
 
-Status: 2026-09-11, experimental AGIPC-Core dispatch validated on the frozen SPD fixture, one-frame cube, a 30-frame ground-contact transition, and a reduced mixed ABD/FEM cloth scene. Symmetric-Hessian and paper-BVH modes remain unavailable.
+Status: 2026-09-11, experimental AGIPC-Core dispatch validated on the frozen SPD fixture, one-frame cube, a 30-frame ground-contact transition, a reduced mixed ABD/FEM scene, and a 35-frame reduced cloth-on-fixed-ABD self-contact scene. Symmetric-Hessian and paper-BVH modes remain unavailable.
 
 | Paper component | Implementation | Current status |
 |---|---|---|
@@ -14,6 +14,7 @@ Status: 2026-09-11, experimental AGIPC-Core dispatch validated on the frozen SPD
 | Fine system hook | `StiffGIPC/linear_system/linear_system/global_linear_system.cu` | Runs after the fine BCOO converter, using `h_unique_key_number`; `agipc-core` adopts the guarded candidate while baseline mode remains unchanged |
 | Runtime truthfulness | `StiffGIPC/gipc/runtime_options.*`, `StiffGIPC/gl_main.cu` | `agipc-core` dispatches to the implemented route; SymHessian/Paper exit code 2 with the missing stages named |
 | Newton termination | `StiffGIPC/GIPC.cu`: `solve_subIP` | AGIPC-Core checks the newly solved direction against the paper `1e-3 * bbox_diagonal * dt`; StiffGIPC retains its prior previous-direction check and scene threshold |
+| Reduced Figure 15 fixture and state output | `StiffGIPC/gl_main.cu`: `set_case_fig15_cloth_abd_scaled`, `run_headless`; `StiffGIPC/gipc/runtime_options.*` | Fixed ABD sphere plus independently falling FEM cloth at `E=1e6`, `dt=.01`; JSON contact/terminal summaries and optional FP64 FEM CSV support direct paired-state error |
 | MAS capacity prerequisite | `StiffGIPC/gipc/hierarchy_capacity.h`, `StiffGIPC/MASPreconditioner.*` | Semantic capacity alignment and bounds checks backported |
 
-Still required before treating `--solver agipc-core` as broadly validated: self-contact transitions, failure-mode fallback fixtures beyond dimension mismatch and near-zero residual, equal-frame state comparisons on larger meshes, and repeated performance experiments. Symmetric Hessian and stackless BVH are separate remaining stages. MAS on the coarse system remains a later comparison; the current block-Jacobi coarse preconditioner is an intermediate route.
+Still required before treating `--solver agipc-core` as broadly validated: explicit contact appearance/disappearance checks within Newton iterations, failure-mode fallback fixtures beyond dimension mismatch and near-zero residual, equal-frame state comparisons on larger meshes, and repeated performance experiments. Symmetric Hessian and stackless BVH are separate remaining stages. MAS on the coarse system remains a later comparison; the current block-Jacobi coarse preconditioner is an intermediate route.

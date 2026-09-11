@@ -105,6 +105,8 @@ std::vector<int>    file_tet_offsets;
 gipc::RuntimeOptions runtime_options;
 int figure12_cloth_vertex_count   = 0;
 int figure12_cloth_triangle_count = 0;
+int figure15_cloth_vertex_count   = 0;
+int figure15_cloth_triangle_count = 0;
 constexpr double figure12_primary_bunny_young_modulus   = 1e7;
 constexpr double figure12_secondary_bunny_young_modulus = 1e4;
 
@@ -1142,6 +1144,35 @@ void setMAS_partition()
     }
 }
 
+void set_case_fig15_cloth_abd_scaled()
+{
+    gipc::SimpleSceneImporter importer;
+    collision_detection_buff_scale = 1.0;
+    linear_system_buff_scale = 1.0;
+
+    Eigen::Matrix4d sphere_transform = Eigen::Matrix4d::Identity();
+    sphere_transform.block<3,3>(0,0) = Eigen::Matrix3d::Identity()*0.2;
+    sphere_transform(1,3) = -0.15;
+    importer.load_geometry(
+        tetMesh,3,gipc::BodyType::ABD,sphere_transform,1e7,
+        assets_dir+"tetMesh/wrecking-ball-mesh/wrecking-ball/ball.obj_.msh",
+        ipc.pcg_data.P_type,BodyBoundaryType::Fixed);
+
+    Eigen::Matrix4d cloth_transform = Eigen::Matrix4d::Identity();
+    cloth_transform.block<3,3>(0,0) = Eigen::Matrix3d::Identity()*0.6;
+    cloth_transform(1,3) = 0.35;
+    const std::string cloth_path = runtime_options.cloth_mesh.empty()
+                                       ? assets_dir+"triMesh/cloth_high.obj"
+                                       : runtime_options.cloth_mesh;
+    const auto vertex_offset=tetMesh.vertexes.size();
+    const auto triangle_offset=tetMesh.triangles.size();
+    importer.load_geometry(tetMesh,2,gipc::BodyType::FEM,cloth_transform,
+                           runtime_options.young_modulus,cloth_path,ipc.pcg_data.P_type);
+    figure15_cloth_vertex_count=static_cast<int>(tetMesh.vertexes.size()-vertex_offset);
+    figure15_cloth_triangle_count=static_cast<int>(tetMesh.triangles.size()-triangle_offset);
+    ipc.clothYoungModulus=runtime_options.young_modulus;
+}
+
 namespace
 {
 uint32_t expand_morton_10(uint32_t value)
@@ -1225,6 +1256,10 @@ void initScene()
     else if(runtime_options.scene == "paper-fig12-coupling-scaled")
     {
         set_case2();
+    }
+    else if(runtime_options.scene == "paper-fig15-cloth-abd-scaled")
+    {
+        set_case_fig15_cloth_abd_scaled();
     }
     else
     {
@@ -1797,11 +1832,14 @@ extern double totalTime;
 extern double total_Cg_count;
 extern int    totalNT;
 extern int    total_Frames;
+extern double totalCollisionPairs;
+extern double maxCOllisionPairNum;
 
 int run_headless()
 {
     const auto wall_begin = std::chrono::steady_clock::now();
     init_headless();
+    const auto initial_vertices = tetMesh.vertexes;
     const auto simulation_begin = std::chrono::steady_clock::now();
 
     for(int frame = 0; frame < runtime_options.frames; ++frame)
@@ -1828,6 +1866,35 @@ int run_headless()
                           && std::isfinite(vertex.y) && std::isfinite(vertex.z);
         min_y = std::min(min_y, vertex.y);
     }
+    double fem_min_y=std::numeric_limits<double>::infinity();
+    double fem_max_y=-std::numeric_limits<double>::infinity();
+    double fem_displacement2_sum=0.0;
+    double fem_max_displacement2=0.0;
+    double abd_max_displacement2=0.0;
+    double3 fem_position_sum=make_double3(0,0,0);
+    const size_t fem_offset=tetMesh.abd_vertexOffset;
+    for(size_t i=0;i<tetMesh.vertexes.size();++i)
+    {
+        const auto& current=tetMesh.vertexes[i];
+        const auto& initial=initial_vertices[i];
+        const double dx=current.x-initial.x;
+        const double dy=current.y-initial.y;
+        const double dz=current.z-initial.z;
+        const double displacement2=dx*dx+dy*dy+dz*dz;
+        if(i<fem_offset)
+            abd_max_displacement2=std::max(abd_max_displacement2,displacement2);
+        else
+        {
+            fem_min_y=std::min(fem_min_y,current.y);
+            fem_max_y=std::max(fem_max_y,current.y);
+            fem_displacement2_sum+=displacement2;
+            fem_max_displacement2=std::max(fem_max_displacement2,displacement2);
+            fem_position_sum.x+=current.x;
+            fem_position_sum.y+=current.y;
+            fem_position_sum.z+=current.z;
+        }
+    }
+    const size_t fem_vertex_count=tetMesh.vertexes.size()-fem_offset;
 
     const auto simulation_end = std::chrono::steady_clock::now();
     const double wall_time_ms =
@@ -1852,7 +1919,9 @@ int run_headless()
     metrics["framework"]        = runtime_options.framework;
     metrics["preconditioner"]   = runtime_options.preconditioner;
     metrics["spmv"]             = gipc::to_string(runtime_options.spmv);
-    metrics["body_mode"]        = runtime_options.scene == "paper-fig12-coupling-scaled"
+    const bool paper_mixed_scene = runtime_options.scene == "paper-fig12-coupling-scaled"
+                                   || runtime_options.scene == "paper-fig15-cloth-abd-scaled";
+    metrics["body_mode"]        = paper_mixed_scene
                                         ? runtime_options.body_mode
                                         : "scene-defined";
     metrics["frames_requested"] = runtime_options.frames;
@@ -1891,6 +1960,16 @@ int run_headless()
         metrics["secondary_bunny_young_modulus"] =
             figure12_secondary_bunny_young_modulus;
     }
+    else if(runtime_options.scene == "paper-fig15-cloth-abd-scaled")
+    {
+        metrics["scene_scale"] = "REDUCED_SCALE";
+        metrics["figure15_obstacle"] =
+            "tetMesh/wrecking-ball-mesh/wrecking-ball/ball.obj_.msh";
+        metrics["figure15_obstacle_fixed"] = true;
+        metrics["cloth_vertices"] = figure15_cloth_vertex_count;
+        metrics["cloth_triangles"] = figure15_cloth_triangle_count;
+        metrics["cloth_young_modulus"] = ipc.clothYoungModulus;
+    }
     metrics["young_modulus"]    = runtime_options.young_modulus;
     metrics["dt"]               = runtime_options.dt;
     metrics["wall_time_ms"]     = wall_time_ms;
@@ -1898,6 +1977,10 @@ int run_headless()
     metrics["simulation_time_ms"] = totalTime;
     metrics["newton_iterations"]  = totalNT;
     metrics["pcg_iterations"]     = total_Cg_count;
+    metrics["cumulative_self_collision_pair_samples"] = totalCollisionPairs;
+    metrics["maximum_self_collision_pairs"] = maxCOllisionPairNum;
+    metrics["last_self_collision_pairs"] = ipc.h_cpNum[0];
+    metrics["last_ground_collision_pairs"] = ipc.h_gpNum;
     metrics["average_newton_per_frame"] = total_Frames > 0
                                                 ? static_cast<double>(totalNT) / total_Frames
                                                 : 0.0;
@@ -1910,6 +1993,40 @@ int run_headless()
     metrics["finite_vertices"]    = finite_vertices;
     metrics["minimum_y"]          = min_y;
     metrics["ground_penetration"] = std::max(0.0, -1.0 - min_y);
+    if(fem_vertex_count>0)
+    {
+        metrics["fem_minimum_y"] = fem_min_y;
+        metrics["fem_maximum_y"] = fem_max_y;
+        metrics["fem_rms_displacement"] =
+            std::sqrt(fem_displacement2_sum/static_cast<double>(fem_vertex_count));
+        metrics["fem_maximum_displacement"] = std::sqrt(fem_max_displacement2);
+        metrics["fem_position_mean"] = {
+            fem_position_sum.x/fem_vertex_count,
+            fem_position_sum.y/fem_vertex_count,
+            fem_position_sum.z/fem_vertex_count};
+    }
+    metrics["abd_maximum_displacement"] = std::sqrt(abd_max_displacement2);
+    if(!runtime_options.fem_final_state_path.empty())
+    {
+        const std::filesystem::path final_state_path(runtime_options.fem_final_state_path);
+        if(!final_state_path.parent_path().empty())
+            std::filesystem::create_directories(final_state_path.parent_path());
+        std::ofstream output(final_state_path);
+        output.precision(17);
+        output << "vertex,x,y,z\n";
+        for(size_t i=fem_offset;i<tetMesh.vertexes.size();++i)
+        {
+            const auto& position=tetMesh.vertexes[i];
+            output << i-fem_offset << ',' << position.x << ',' << position.y << ','
+                   << position.z << '\n';
+        }
+        if(!output)
+        {
+            std::cerr << "failed to write FEM final state: " << final_state_path << '\n';
+            return 3;
+        }
+        metrics["fem_final_state_path"] = final_state_path.string();
+    }
 
     if(!runtime_options.metrics_path.empty())
     {
@@ -2186,7 +2303,8 @@ int main(int argc, char** argv)
         if(runtime_options.frames == 0)
             runtime_options.frames = 30;
     }
-    else if(runtime_options.scene == "paper-fig12-coupling-scaled")
+    else if(runtime_options.scene == "paper-fig12-coupling-scaled"
+            || runtime_options.scene == "paper-fig15-cloth-abd-scaled")
     {
         std::filesystem::path mesh_path = runtime_options.cloth_mesh.empty()
                                               ? std::filesystem::path(assets_dir)
@@ -2200,6 +2318,9 @@ int main(int argc, char** argv)
             return 2;
         }
         runtime_options.cloth_mesh = mesh_path.string();
+        if(runtime_options.scene == "paper-fig15-cloth-abd-scaled"
+           && runtime_options.frames == 0)
+            runtime_options.frames = 40;
     }
 
     if(runtime_options.headless)

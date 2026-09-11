@@ -124,10 +124,11 @@ Test rest tet `(0,0,0),(1,0,0),(0,1,0),(0,0,1)`; triangle uses first three point
 - [ ] Pair baseline/adaptive runs with equal scene parameters; verify finite vertices, minimum separation/ground penetration, final-state error and accepted line-search steps. Record failed cases, never suppress them in summaries.
 - [x] Run the first paired ground-contact transition with the paper current-direction threshold: 30-frame cube, zero penetration, minimum-y delta `1.30e-6`, 42 AGIPC applied steps versus 66 baseline steps, and 72/72 AGIPC linear candidate adoptions. Self-contact and frozen contact-matrix checks remain open.
 - [x] Run a reduced mixed ABD/FEM cloth gate: one ABD bunny plus 289-node planar cloth, zero penetration, minimum-y delta `2.77e-10`, 7 independent coarse blocks, and one adopted physical direction. The final near-zero-residual check conservatively used the baseline fallback.
+- [x] Run a dedicated reduced Figure 15 self-contact gate with a fixed ABD sphere: both 35-frame routes remained finite with zero penetration; direct 289-vertex RMS final-state error was `0.03314` (`5.78%` of baseline RMS displacement). AGIPC used 21/879 active DoF, but was `1.90x` slower in the single reduced-scale pair.
 
 ## Task H: metrics and paper pipeline
 
-- [ ] Extend JSON with all fields from task brief §16, keep old fields, FEM and whole-system DoF distinct. Stage sum must agree with total within documented overlap/timing error.
+- [ ] Extend JSON with all fields from task brief §16, keep old fields, FEM and whole-system DoF distinct. Contact counts, FEM/ABD terminal summaries and optional final-state CSV are present; stage timing and the remaining paper fields are still required.
 - [ ] Add persistent CUDA events and NVTX labels; remove only adaptive-path allocations/sync after correctness evidence.
 - [ ] Implement independent symmetric fine FEM/contact/friction assembly; compare complete matrices before allowing `agipc-symhessian`.
 - [ ] Implement `--collision-traversal stack|stackless`; compare sorted candidate and contact sets on equal states before enabling `agipc-paper`.
@@ -138,6 +139,7 @@ Test rest tet `(0,0,0),(1,0,0),(0,1,0),(0,0,1)`; triangle uses first three point
 - [ ] Verify exact meshes and physical durations; if unavailable, label paper-inspired/reduced workloads and ASSET_BLOCKED for exact reproduction. Do not infer asset identity from scene names.
 - [ ] Fig13 first: same ball, E=1e4/1e5/1e6/1e7, dt=.01. Establish active-DoF behavior and stage costs before comparing paper speedup.
 - [ ] Fig14: same dragon E=3e5, dt=.005/.01/.02/.04, physical duration1.5s, document fractional-frame policy. Lower dt should yield lower active ratios.
+- [x] Fig15 reduced preflight: 289-node cloth on a fixed ABD sphere at E=1e6, dt=.01; active ratio `0.02389`, direct final-state error recorded, negative single-pair runtime retained.
 - [ ] Fig15: cloth on ABD sphere E=1e6, dt=.01, 10K/51K/92K first; only larger runs after measured capacity headroom.
 - [ ] Warm up and interleave S/A/A/S until each method has >=3 measured trials. Hash every executable/mesh; store immutable JSON in perf_history and CSV/JSON summaries.
 - [ ] Complete AGIPC_IMPLEMENTATION_MAPPING.md, AGIPC_NUMERICAL_VALIDATION.md, AGIPC_PERFORMANCE_ANALYSIS.md, AGIPC_FAILURES_AND_FIXES.md and AGIPC_PAPER_COMPARISON.md with actual results. Separate numerical/trend/quantitative levels; retain negative results.

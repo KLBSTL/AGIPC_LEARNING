@@ -31,3 +31,7 @@ The first current-direction integration reused `Newton_solver_threshold`, which 
 ## Figure 12 free fall did not exercise mixed contact
 
 A 30-frame reduced Figure 12 run completed with finite vertices, but all 49,600 edge samples remained collapsible and the protected-edge count stayed zero. The ABD bunny and FEM cloth accelerated together, so extending this scene did not create the intended cloth-on-rigid contact. This run is retained in `perf_diag/agipc_core_fig12_hybrid_contact30.json` as negative scene evidence and is not accepted as Gate F contact validation. A dedicated reduced Figure 15 setup needs a stationary ABD obstacle and an independently falling cloth.
+
+## Reduced Figure 15 is a correctness gate, not a speedup result
+
+The replacement fixture fixes an ABD sphere and drops a 289-node cloth onto it. It exercises changing strain tags and thousands of self-collision pair samples, and both solvers finish 35 frames without finite-value or penetration failures. Direct final-state export shows `0.03314` RMS paired-vertex error (`5.78%` of baseline RMS displacement), which is compatible with the deliberately different AGIPC and StiffGIPC Newton stopping semantics but rules out claiming identical trajectories. The measured AGIPC-Core run was `1.90x` slower, with 204 versus 141 Newton iterations and 4,908 versus 1,890 linear iterations. The result is retained as reduced-scale overhead evidence; paper-scale speedup remains untested.

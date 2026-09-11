@@ -22,7 +22,7 @@ ParseResult invalid(RuntimeOptions options, std::string message)
 std::string runtime_options_help()
 {
     return "Usage: gipc [options]\n"
-           "  --scene stiff-bunny-drop|paper-fig12-coupling-scaled\n"
+           "  --scene stiff-bunny-drop|paper-fig12-coupling-scaled|paper-fig15-cloth-abd-scaled\n"
            "  --solver stiffgipc|agipc-core|agipc-symhessian|agipc-paper (last two pending)\n"
            "  --tet-mesh <MSH_PATH>\n"
            "  --cloth-mesh <OBJ_PATH>\n"
@@ -41,6 +41,7 @@ std::string runtime_options_help()
            "  --dt <VALUE>\n"
            "  --headless\n"
            "  --metrics-path <JSON_PATH>\n"
+           "  --fem-final-state-path <CSV_PATH>\n"
            "  --agipc-threshold <VALUE>\n"
            "  --agipc-mapping matching|warp-hash\n"
            "  --agipc-max-levels <N>\n"
@@ -59,6 +60,7 @@ ParseResult parse_runtime_options(int argc, char** argv)
     bool           preconditioner_was_explicit = false;
     bool           spmv_was_explicit = false;
     bool           body_mode_was_explicit = false;
+    bool           young_modulus_was_explicit = false;
 
     auto require_value = [&](int& index, const std::string& flag) -> const char* {
         if(index + 1 >= argc)
@@ -151,13 +153,18 @@ ParseResult parse_runtime_options(int argc, char** argv)
                 frames_were_explicit = true;
             }
             else if(argument == "--young-modulus")
+            {
                 options.young_modulus = std::stod(require_value(i, argument));
+                young_modulus_was_explicit = true;
+            }
             else if(argument == "--dt")
                 options.dt = std::stod(require_value(i, argument));
             else if(argument == "--headless")
                 options.headless = true;
             else if(argument == "--metrics-path")
                 options.metrics_path = require_value(i, argument);
+            else if(argument == "--fem-final-state-path")
+                options.fem_final_state_path = require_value(i, argument);
             else if(argument == "--agipc-threshold")
                 options.agipc_threshold = std::stod(require_value(i, argument));
             else if(argument == "--agipc-mapping")
@@ -181,14 +188,19 @@ ParseResult parse_runtime_options(int argc, char** argv)
     }
 
     if(options.scene != "interactive" && options.scene != "stiff-bunny-drop"
-       && options.scene != "paper-fig12-coupling-scaled")
+       && options.scene != "paper-fig12-coupling-scaled"
+       && options.scene != "paper-fig15-cloth-abd-scaled")
         return invalid(options,
-                       "scene must be interactive, stiff-bunny-drop, or "
-                       "paper-fig12-coupling-scaled");
+                       "scene must be interactive, stiff-bunny-drop, "
+                       "paper-fig12-coupling-scaled, or paper-fig15-cloth-abd-scaled");
+    const bool paper_mixed_scene = options.scene == "paper-fig12-coupling-scaled"
+                                   || options.scene == "paper-fig15-cloth-abd-scaled";
+    if(options.scene == "paper-fig15-cloth-abd-scaled" && !young_modulus_was_explicit)
+        options.young_modulus = 1e6;
     if(!options.cloth_mesh.empty()
-       && options.scene != "paper-fig12-coupling-scaled")
+       && !paper_mixed_scene)
         return invalid(options,
-                       "cloth-mesh is only valid for paper-fig12-coupling-scaled");
+                       "cloth-mesh is only valid for the paper cloth scenes");
     if(options.preconditioner != "block-diagonal"
        && options.preconditioner != "gpu-mas"
        && options.preconditioner != "cemas16"
@@ -199,15 +211,15 @@ ParseResult parse_runtime_options(int argc, char** argv)
         return invalid(options,
                        "cemas32 is unavailable: BANKSIZE and sorted assets are fixed to 16");
     if(preconditioner_was_explicit
-       && options.scene != "paper-fig12-coupling-scaled")
+       && !paper_mixed_scene)
         return invalid(options,
-                       "preconditioner is currently implemented only for paper-fig12-coupling-scaled");
+                       "preconditioner is currently implemented only for paper scenes");
     if(options.body_mode != "fem" && options.body_mode != "hybrid-abd")
         return invalid(options, "body-mode must be fem or hybrid-abd");
     if(body_mode_was_explicit
-       && options.scene != "paper-fig12-coupling-scaled")
+       && !paper_mixed_scene)
         return invalid(options,
-                       "body-mode is currently implemented only for paper-fig12-coupling-scaled");
+                       "body-mode is currently implemented only for paper scenes");
     if(options.figure12_bunny_count < 1 || options.figure12_bunny_count > 2)
         return invalid(options, "figure12-bunny-count must be 1 or 2");
     if(options.figure12_collision_buffer_scale <= 0.0
@@ -225,9 +237,9 @@ ParseResult parse_runtime_options(int argc, char** argv)
            && options.framework != "abd-cemas-srbk")
             return invalid(options,
                            "framework must be gipc, srbk, cemas-srbk, or abd-cemas-srbk");
-        if(options.scene != "paper-fig12-coupling-scaled")
+        if(!paper_mixed_scene)
             return invalid(options,
-                           "framework presets are currently implemented only for paper-fig12-coupling-scaled");
+                           "framework presets are currently implemented only for paper scenes");
         const bool traditional_framework = options.framework == "gipc"
                                            || options.framework == "srbk";
         const SpmvMode desired_spmv = options.framework == "gipc"
@@ -273,6 +285,10 @@ ParseResult parse_runtime_options(int argc, char** argv)
     {
         options.framework = "custom";
     }
+    if(options.scene == "paper-fig15-cloth-abd-scaled"
+       && options.body_mode != "hybrid-abd")
+        return invalid(options,
+                       "paper-fig15-cloth-abd-scaled requires the hybrid-abd body mode");
     if(!options.frozen_linear_diagnostics_path.empty()
        && (options.scene != "paper-fig12-coupling-scaled"
            || options.preconditioner != "gpu-mas" || !options.headless))

@@ -82,7 +82,7 @@ bool GlobalLinearSystem::build_linear_system()
     }
     convert_new();
 
-    // Gate C is diagnostic-only: assemble PTAP/PTb without changing the fine solve.
+    // Assemble the adaptive candidate after the fine matrix has been reduced to unique BCOO.
     agipc::update_galerkin_shadow(*gipc_global_triplet,
                                   m_b.buffer_view().data(),
                                   total_rhs_count);
@@ -159,6 +159,12 @@ gipc::SizeT GlobalLinearSystem::solve_linear_system()
         m_frozen_linear_diagnostics_complete = true;
         m_x.buffer_view().fill(0);
         return 0;
+    }
+    const auto adoption=agipc::adopt_galerkin_candidate(m_x.data(),m_x.size());
+    if(adoption.value("adopted",false))
+    {
+        distribute_solution();
+        return adoption.value("iterations",0);
     }
     auto iter = m_solver->solve(m_x, m_b);
     distribute_solution();

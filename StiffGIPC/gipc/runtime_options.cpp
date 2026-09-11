@@ -23,7 +23,7 @@ std::string runtime_options_help()
 {
     return "Usage: gipc [options]\n"
            "  --scene stiff-bunny-drop|paper-fig12-coupling-scaled\n"
-           "  --solver stiffgipc|agipc-core|agipc-symhessian|agipc-paper (adaptive solvers pending)\n"
+           "  --solver stiffgipc|agipc-core|agipc-symhessian|agipc-paper (last two pending)\n"
            "  --tet-mesh <MSH_PATH>\n"
            "  --cloth-mesh <OBJ_PATH>\n"
            "  --framework gipc|srbk|cemas-srbk|abd-cemas-srbk\n"

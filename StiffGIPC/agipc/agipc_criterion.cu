@@ -28,6 +28,7 @@ struct Strain { double g[9]; };
 struct Workspace
 {
     bool enabled = false;
+    bool mapping_complete = false;
     int fine_vertices = 0;
     int fine_offset = 0;
     int coarse_vertices = 0;
@@ -390,12 +391,14 @@ void initialize_criterion(const tetrahedra_obj& mesh, double threshold, int max_
     w.increment_min = std::numeric_limits<double>::infinity();
     w.increment_max = w.increment_sum = 0;
     w.last_mapping = nullptr;
+    w.mapping_complete = false;
 }
 
 gipc::Json update_mapping()
 {
     if(!workspace.enabled) return nullptr;
     workspace.last_mapping=build_mapping(workspace);
+    workspace.mapping_complete=workspace.last_mapping.value("complete",false);
     return workspace.last_mapping;
 }
 
@@ -405,7 +408,7 @@ MappingDeviceView mapping_device_view()
     return {w.fine_to_coarse.data(),w.coarse_block_bases.data(),w.affine_flags.data(),
             w.rest_positions.data(),w.fine_vertices,w.coarse_vertices,
             w.translational_vertices,w.affine_vertices,w.coarse_block_vertices,
-            w.enabled && !w.last_mapping.is_null()};
+            w.enabled && workspace.mapping_complete};
 }
 
 void begin_criterion_step(device_TetraData& mesh)

@@ -1580,9 +1580,11 @@ void initScene()
 
     ipc.buildBVH();
     ipc.init(tetMesh.meanMass, tetMesh.meanVolum, tetMesh.minConer, tetMesh.maxConer, linear_system_buff_scale);
-    if(runtime_options.agipc_diagnostics)
+    const bool agipc_core_enabled=runtime_options.solver==gipc::SolverMode::AGIPC;
+    if(runtime_options.agipc_diagnostics || agipc_core_enabled)
     {
-        agipc::configure_galerkin(runtime_options.agipc_fine_correction_iterations);
+        agipc::configure_galerkin(runtime_options.agipc_fine_correction_iterations,
+                                  agipc_core_enabled);
         agipc::initialize_criterion(tetMesh,runtime_options.agipc_threshold,
                                     runtime_options.agipc_max_levels);
     }
@@ -1836,13 +1838,15 @@ int run_headless()
     gipc::Json metrics;
     metrics["scene"]            = runtime_options.scene;
     metrics["solver"]           = runtime_options.solver == gipc::SolverMode::AGIPC
-                                      ? "agipc"
+                                      ? "agipc-core"
                                       : "stiffgipc";
     metrics["tet_mesh"]         = runtime_options.tet_mesh;
-    metrics["agipc_criterion_enabled"] = runtime_options.agipc_diagnostics;
-    if(runtime_options.agipc_diagnostics)
+    const bool agipc_active=runtime_options.agipc_diagnostics
+                            || runtime_options.solver==gipc::SolverMode::AGIPC;
+    metrics["agipc_criterion_enabled"] = agipc_active;
+    if(agipc_active)
         metrics["agipc_criterion_threshold"] = runtime_options.agipc_threshold;
-    if(runtime_options.agipc_diagnostics)
+    if(agipc_active)
         metrics["agipc_criterion"] = agipc::criterion_summary();
     metrics["cloth_mesh"]       = runtime_options.cloth_mesh;
     metrics["framework"]        = runtime_options.framework;
@@ -2089,9 +2093,10 @@ int main(int argc, char** argv)
         return 0;
     }
     runtime_options = parsed_options.options;
-    if(runtime_options.solver != gipc::SolverMode::StiffGIPC)
+    if(runtime_options.solver == gipc::SolverMode::AGIPCSymHessian
+       || runtime_options.solver == gipc::SolverMode::AGIPCPaper)
     {
-        std::cerr << "AGIPC solver unavailable: validated shadow stages only; adoption and post-correction gates not passed.\n";
+        std::cerr << "Requested AGIPC solver unavailable: symmetric Hessian and paper BVH stages are not implemented.\n";
         return 2;
     }
     if(runtime_options.agipc_self_test)

@@ -113,7 +113,7 @@ Test rest tet `(0,0,0),(1,0,0),(0,1,0),(0,0,1)`; triangle uses first three point
 - [x] Implement coarse PCG with explicit norm tolerance1e-3, signed curvature checks and diagnosed nonconvergence. The validated intermediate preconditioner is block-Jacobi; paper MAS semantics remain later work.
 - [x] Prolongate using the exact adjoint; post-PCG on full fine H starts from that solution, uses a block diagonal preconditioner and honors the runtime cap including cap0.
 - [x] Test a nonzero initial correction state on a frozen SPD H/g and a real cube system; record projected residual reduction, finite direction, signed curvature and the residual trace.
-- [x] Add experimental `--solver agipc-core` dispatch after A–D/E pass. Capture attempted/adopted/fallback counters and reasons, and retain the original solver as the guarded fallback.
+- [x] Add experimental `--solver agipc-core` dispatch after A–D/E pass. Capture attempted/adopted/fallback counters plus aggregate typed reasons, and retain the original solver as the guarded fallback.
 - [x] Apply the current-direction Newton criterion with dt factor after the AGIPC-Core solve; retain the baseline's previous-direction behavior as frozen provenance and record the current norm and threshold per Newton step.
 - [ ] Strict diagnostics compute full gradient RMS and full-space displacement; separate diagnostic timing.
 

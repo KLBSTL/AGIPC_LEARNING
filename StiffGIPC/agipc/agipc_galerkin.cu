@@ -40,9 +40,11 @@ struct GalerkinState
     int post_max_iterations=10;
     bool adoption_enabled=false;
     bool candidate_ready=false;
+    std::string candidate_failure_reason="not_assembled";
     std::size_t candidate_dofs=0;
     int candidate_iterations=0;
     std::size_t adoption_attempts=0,adoptions=0,fallbacks=0;
+    gipc::Json fallback_reason_counts=gipc::Json::object();
     gipc::Json last_adoption=nullptr;
     gipc::Json last=nullptr;
     std::size_t updates=0;
@@ -478,6 +480,7 @@ gipc::Json assemble_shadow(GalerkinState& target,
                            MappingDeviceView mapping)
 {
     target.candidate_ready=false;
+    target.candidate_failure_reason="mapping_incomplete";
     target.candidate_dofs=0;
     target.candidate_iterations=0;
     if(!mapping.ready) return nullptr;
@@ -491,7 +494,11 @@ gipc::Json assemble_shadow(GalerkinState& target,
     if(mapping.coarse_nodes<0 || (mapping.fine_nodes>0 && mapping.coarse_nodes==0))
         throw std::runtime_error("Gate C mapping has no coarse owner");
     const int fine_unique=fine_matrix.h_unique_key_number;
-    if(fine_unique<1) return nullptr;
+    if(fine_unique<1)
+    {
+        target.candidate_failure_reason="fine_matrix_empty";
+        return nullptr;
+    }
     const int coarse_blocks=prefix_blocks+mapping.coarse_block_nodes;
 
     cudaEvent_t start=nullptr,end=nullptr;
@@ -549,6 +556,26 @@ gipc::Json assemble_shadow(GalerkinState& target,
         : gipc::Json{{"attempted",false},{"stop_reason","coarse_solve_failed"},
                      {"controls_solver",false}};
     target.candidate_ready=post_correction.value("candidate_valid",false);
+    if(target.candidate_ready)
+        target.candidate_failure_reason.clear();
+    else if(!coarse_solve.value("converged",false))
+        target.candidate_failure_reason="coarse_"
+            +coarse_solve.value("failure_reason",std::string{"solve_failed"});
+    else
+    {
+        const auto stop=post_correction.value("stop_reason",std::string{"candidate_invalid"});
+        const auto reduction=post_correction.value("residual_reduction_ratio",1.0);
+        const auto rhs_dot=post_correction.value("rhs_dot_direction",0.0);
+        if(stop!="residual_tolerance" && stop!="iteration_cap"
+           && stop!="cap_zero_ablation")
+            target.candidate_failure_reason="post_"+stop;
+        else if(!std::isfinite(reduction) || reduction>1.0+1e-12)
+            target.candidate_failure_reason="post_residual_not_reduced";
+        else if(!std::isfinite(rhs_dot) || rhs_dot<=0)
+            target.candidate_failure_reason="post_non_descent_direction";
+        else
+            target.candidate_failure_reason="post_candidate_invalid";
+    }
     target.candidate_dofs=fine_rhs_dofs;
     target.candidate_iterations=coarse_solve.value("iterations",0)
         +post_correction.value("iterations",0);
@@ -584,8 +611,14 @@ gipc::Json adopt_candidate(GalerkinState& target,double* destination,
     if(!target.candidate_ready || target.candidate_dofs!=destination_dofs)
     {
         ++target.fallbacks;
+        const std::string reason=target.candidate_ready
+            ? "dof_mismatch"
+            : (target.candidate_failure_reason.empty()
+                ? "candidate_gate_failed" : target.candidate_failure_reason);
+        target.fallback_reason_counts[reason]=
+            target.fallback_reason_counts.value(reason,std::size_t{0})+1;
         target.last_adoption={{"attempted",true},{"adopted",false},
-            {"reason",target.candidate_ready?"dof_mismatch":"candidate_gate_failed"},
+            {"reason",reason},
             {"candidate_dofs",target.candidate_dofs},{"destination_dofs",destination_dofs}};
         return target.last_adoption;
     }
@@ -633,6 +666,7 @@ gipc::Json galerkin_summary()
     result["adoption_attempts"]=state.adoption_attempts;
     result["adoptions"]=state.adoptions;
     result["fallbacks"]=state.fallbacks;
+    result["fallback_reason_counts"]=state.fallback_reason_counts;
     result["last_adoption"]=state.last_adoption;
     result["controls_solver"]=!state.last_adoption.is_null()
                               && state.last_adoption.value("adopted",false);
@@ -781,7 +815,9 @@ gipc::Json galerkin_self_test()
        || post_reduction>=1.0 || post_rhs_dot<=0
        || corrected_exact_error>=initial_exact_error
        || fallback.value("adopted",true) || !adoption.value("adopted",false)
-       || local.fallbacks!=1 || local.adoptions!=1 || adoption_copy_error>1e-15
+       || local.fallbacks!=1 || local.adoptions!=1
+       || local.fallback_reason_counts.value("dof_mismatch",std::size_t{0})!=1
+       || adoption_copy_error>1e-15
        || planar_rank!=3 || collinear_rank!=2)
         throw std::runtime_error("Gate D mixed GPU Galerkin mismatch: matrix="
             +std::to_string(matrix_error)+", rhs="+std::to_string(rhs_error)

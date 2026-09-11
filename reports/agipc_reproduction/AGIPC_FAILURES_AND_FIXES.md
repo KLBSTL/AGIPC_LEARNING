@@ -15,3 +15,7 @@ Naively emitting and canonicalizing all 16 sub-blocks of an affine fine diagonal
 ## New CUDA source was absent from the first parallel link
 
 After CMake detected `agipc_galerkin.cu`, the first parallel build reached the link before its object was available. A sequential rebuild compiled the new unit and linked successfully. Subsequent incremental builds are stable.
+
+## Absolute post-PCG breakdown threshold rejected a tiny valid system
+
+The first real cube run reduced the fine residual to `0.07735` of its prolongated value, then stopped because `r^T M^-1 r` was below the fixed `1e-30` guard. The right-hand side itself was only about `5.8e-14`, so the fixed guard was not scale invariant. The post-PCG recurrence now checks finite positive preconditioned residuals instead. The repeated run reached the relative residual tolerance in 10 iterations, reduced the residual by `2.3749251015407196e-5`, and all recorded curvatures were finite and positive.

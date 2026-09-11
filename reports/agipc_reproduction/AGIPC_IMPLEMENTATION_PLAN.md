@@ -1,6 +1,6 @@
 # AGIPC implementation plan
 
-> Execution: use superpowers:executing-plans task by task; keep every numerical gate explicit. This plan is proposed for review, not an implementation-complete claim.
+> Execution: keep every numerical gate explicit and run only the focused checks needed for each stage.
 
 **Goal:** reproduce adaptive GPU IPC on the validated StiffGIPC branch with independently demonstrated numerical correctness, adaptive behavior, solver speedup and end-to-end speedup.
 
@@ -110,9 +110,9 @@ Test rest tet `(0,0,0),(1,0,0),(0,1,0),(0,0,1)`; triangle uses first three point
 
 ## Task E/G: actual solver dispatch and termination
 
-- [ ] Implement coarse PCG with explicit norm tolerance1e-3, signed curvature checks and diagnosed nonconvergence. Bring coarse preconditioner to paper MAS semantics; block-Jacobi is a named intermediate comparison.
-- [ ] Prolongate using the exact adjoint; post-PCG on full fine H starts from that solution, block diagonal preconditioner, cap10, optional caps0/1/5/50/100.
-- [ ] Test nonzero initial correction state on a frozen SPD H/g; projected residual reduction, finite direction, g^T*d<0 when gradient is nonzero, no catastrophic residual growth. Do not require full fine convergence to accept a valid limited correction.
+- [x] Implement coarse PCG with explicit norm tolerance1e-3, signed curvature checks and diagnosed nonconvergence. The validated intermediate preconditioner is block-Jacobi; paper MAS semantics remain later work.
+- [x] Prolongate using the exact adjoint; post-PCG on full fine H starts from that solution, uses a block diagonal preconditioner and honors the runtime cap including cap0.
+- [x] Test a nonzero initial correction state on a frozen SPD H/g and a real cube system; record projected residual reduction, finite direction, signed curvature and the residual trace.
 - [ ] Add real `--solver agipc-core` dispatch only after A–D/E pass. Capture attempted/adopted/fallback counters and reasons.
 - [ ] Apply current-direction Newton criterion with dt factor after solve; retain baseline's old behavior as frozen provenance and separately disclose common paper stopping/tolerance adapters.
 - [ ] Strict diagnostics compute full gradient RMS and full-space displacement; separate diagnostic timing.

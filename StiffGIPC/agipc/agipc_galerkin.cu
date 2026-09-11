@@ -31,9 +31,13 @@ struct GalerkinState
     cudatool::CudaDeviceBuffer<int> expansion_counts;
     cudatool::CudaDeviceBuffer<int> expansion_offsets;
     cudatool::CudaDeviceBuffer<double> coarse_solution,coarse_r,coarse_z,coarse_p,coarse_ap;
-    cudatool::CudaDeviceBuffer<double> prolonged,fine_ax,fine_residual;
+    cudatool::CudaDeviceBuffer<double> prolonged,fine_solution,fine_ax,fine_residual;
+    cudatool::CudaDeviceBuffer<double> fine_z,fine_p,fine_ap;
     cudatool::CudaDeviceBuffer<Eigen::Matrix3d> inverse_diagonal;
     cudatool::CudaDeviceBuffer<int> diagonal_found;
+    cudatool::CudaDeviceBuffer<Eigen::Matrix3d> fine_inverse_diagonal;
+    cudatool::CudaDeviceBuffer<int> fine_diagonal_found,fine_invalid_entries;
+    int post_max_iterations=10;
     gipc::Json last=nullptr;
     std::size_t updates=0;
     double total_ms=0;
@@ -226,6 +230,128 @@ double device_dot(const double* a,const double* b,int count)
         thrust::device_ptr<const double>(a)+count,thrust::device_ptr<const double>(b),0.0);
 }
 
+gipc::Json post_correct_shadow(GalerkinState& target,const GIPCTripletMatrix& fine,
+                               const double* fine_rhs,int fine_dofs)
+{
+    const int blocks=fine.block_rows(),unique=fine.h_unique_key_number;
+    const int max_iterations=target.post_max_iterations;
+    target.fine_solution.resize(fine_dofs);
+    CUDA_SAFE_CALL(cudaMemcpy(target.fine_solution.data(),target.prolonged.data(),
+                              fine_dofs*sizeof(double),cudaMemcpyDeviceToDevice));
+    const double rhs2=device_dot(fine_rhs,fine_rhs,fine_dofs);
+    const double initial2=device_dot(target.fine_residual.data(),
+                                     target.fine_residual.data(),fine_dofs);
+    const double initial_solution2=device_dot(target.fine_solution.data(),
+                                              target.fine_solution.data(),fine_dofs);
+    std::vector<double> residual_history{std::sqrt(std::max(0.0,initial2))};
+    std::vector<double> curvature_history;
+    if(max_iterations==0)
+        return {{"attempted",true},{"converged",false},{"stop_reason","cap_zero_ablation"},
+                {"iterations",0},{"max_iterations",0},{"relative_tolerance",1e-3},
+                {"initial_solution_norm",std::sqrt(std::max(0.0,initial_solution2))},
+                {"nonzero_initial_guess",initial_solution2>0},
+                {"initial_residual_norm",std::sqrt(std::max(0.0,initial2))},
+                {"final_residual_norm",std::sqrt(std::max(0.0,initial2))},
+                {"residual_reduction_ratio",1.0},{"residual_history",residual_history},
+                {"curvature_history",curvature_history},{"controls_solver",false}};
+
+    target.fine_z.resize(fine_dofs); target.fine_p.resize(fine_dofs);
+    target.fine_ap.resize(fine_dofs);
+    target.fine_inverse_diagonal.resize(blocks);
+    target.fine_diagonal_found.resize(blocks);
+    target.fine_invalid_entries.resize(1); target.fine_invalid_entries.reset_zero();
+    initialize_inverse_diagonal<<<(blocks+kThreads-1)/kThreads,kThreads>>>(
+        target.fine_inverse_diagonal.data(),target.fine_diagonal_found.data(),blocks);
+    extract_inverse_diagonal<<<(unique+kThreads-1)/kThreads,kThreads>>>(
+        fine.block_values(),fine.block_row_indices(),fine.block_col_indices(),
+        target.fine_inverse_diagonal.data(),target.fine_diagonal_found.data(),
+        target.fine_invalid_entries.data(),unique);
+    const int found=thrust::reduce(thrust::device_ptr<int>(target.fine_diagonal_found.data()),
+        thrust::device_ptr<int>(target.fine_diagonal_found.data())+blocks,0);
+    std::vector<int> invalid;
+    target.fine_invalid_entries.copy_to_host(invalid);
+    if(found!=blocks || invalid[0]!=0)
+        return {{"attempted",true},{"converged",false},
+                {"stop_reason","missing_or_singular_diagonal"},{"iterations",0},
+                {"max_iterations",max_iterations},{"diagonal_blocks_found",found},
+                {"diagonal_blocks_expected",blocks},{"invalid_diagonal_blocks",invalid[0]},
+                {"initial_solution_norm",std::sqrt(std::max(0.0,initial_solution2))},
+                {"nonzero_initial_guess",initial_solution2>0},
+                {"initial_residual_norm",std::sqrt(std::max(0.0,initial2))},
+                {"final_residual_norm",std::sqrt(std::max(0.0,initial2))},
+                {"residual_reduction_ratio",1.0},{"residual_history",residual_history},
+                {"curvature_history",curvature_history},{"controls_solver",false}};
+
+    const double tolerance2=1e-6*rhs2;
+    double residual2=initial2;
+    int iterations=0;
+    std::string stop_reason;
+    if(residual2<=tolerance2)
+        stop_reason="residual_tolerance";
+    else
+    {
+        apply_diagonal<<<(blocks+kThreads-1)/kThreads,kThreads>>>(
+            target.fine_inverse_diagonal.data(),target.fine_residual.data(),
+            target.fine_z.data(),blocks);
+        CUDA_SAFE_CALL(cudaMemcpy(target.fine_p.data(),target.fine_z.data(),
+                                  fine_dofs*sizeof(double),cudaMemcpyDeviceToDevice));
+        double rz=device_dot(target.fine_residual.data(),target.fine_z.data(),fine_dofs);
+        gipc::Spmv spmv;
+        while(iterations<max_iterations && residual2>tolerance2)
+        {
+            spmv.warp_reduce_sym_spmv(1.0,
+                const_cast<Eigen::Matrix3d*>(fine.block_values()),
+                const_cast<int*>(fine.block_row_indices()),
+                const_cast<int*>(fine.block_col_indices()),unique,
+                cudatool::CDenseVectorView<double>(target.fine_p.data(),fine_dofs),0.0,
+                cudatool::DenseVectorView<double>(target.fine_ap.data(),fine_dofs));
+            const double curvature=device_dot(target.fine_p.data(),target.fine_ap.data(),fine_dofs);
+            curvature_history.push_back(curvature);
+            if(!std::isfinite(curvature) || curvature<=0 || !std::isfinite(rz))
+            {
+                stop_reason=!std::isfinite(curvature)?"nonfinite_curvature":"nonpositive_curvature";
+                break;
+            }
+            const double alpha=rz/curvature;
+            update_x_r<<<(fine_dofs+kThreads-1)/kThreads,kThreads>>>(
+                target.fine_solution.data(),target.fine_residual.data(),target.fine_p.data(),
+                target.fine_ap.data(),alpha,fine_dofs);
+            ++iterations;
+            residual2=device_dot(target.fine_residual.data(),target.fine_residual.data(),fine_dofs);
+            residual_history.push_back(std::sqrt(std::max(0.0,residual2)));
+            if(!std::isfinite(residual2)) { stop_reason="nonfinite_residual"; break; }
+            if(residual2<=tolerance2) { stop_reason="residual_tolerance"; break; }
+            apply_diagonal<<<(blocks+kThreads-1)/kThreads,kThreads>>>(
+                target.fine_inverse_diagonal.data(),target.fine_residual.data(),
+                target.fine_z.data(),blocks);
+            const double next_rz=device_dot(target.fine_residual.data(),target.fine_z.data(),fine_dofs);
+            if(!std::isfinite(next_rz) || next_rz<=0 || !std::isfinite(rz) || rz<=0)
+            { stop_reason="invalid_preconditioned_residual"; break; }
+            update_p<<<(fine_dofs+kThreads-1)/kThreads,kThreads>>>(target.fine_p.data(),
+                target.fine_z.data(),next_rz/rz,fine_dofs);
+            rz=next_rz;
+        }
+        if(stop_reason.empty()) stop_reason="iteration_cap";
+    }
+    const bool converged=residual2<=tolerance2;
+    const double final_solution2=device_dot(target.fine_solution.data(),
+                                            target.fine_solution.data(),fine_dofs);
+    const double rhs_dot_direction=device_dot(fine_rhs,target.fine_solution.data(),fine_dofs);
+    const double reduction=initial2>0?std::sqrt(std::max(0.0,residual2)/initial2):0.0;
+    return {{"attempted",true},{"converged",converged},{"stop_reason",stop_reason},
+            {"iterations",iterations},{"max_iterations",max_iterations},
+            {"relative_tolerance",1e-3},{"tolerance_reference","fine_rhs_norm"},
+            {"initial_solution_norm",std::sqrt(std::max(0.0,initial_solution2))},
+            {"final_solution_norm",std::sqrt(std::max(0.0,final_solution2))},
+            {"nonzero_initial_guess",initial_solution2>0},
+            {"initial_residual_norm",std::sqrt(std::max(0.0,initial2))},
+            {"final_residual_norm",std::sqrt(std::max(0.0,residual2))},
+            {"residual_reduction_ratio",reduction},
+            {"residual_reduced",std::isfinite(reduction) && reduction<=1.0+1e-12},
+            {"rhs_dot_direction",rhs_dot_direction},{"residual_history",residual_history},
+            {"curvature_history",curvature_history},{"controls_solver",false}};
+}
+
 gipc::Json solve_coarse_shadow(GalerkinState& target,const GIPCTripletMatrix& fine,
                                const double* fine_rhs,int fine_dofs,MappingDeviceView mapping,
                                int prefix_blocks)
@@ -381,6 +507,10 @@ gipc::Json assemble_shadow(GalerkinState& target,
         throw std::runtime_error("Gate C encountered invalid matrix or right-hand-side entries");
     const auto coarse_solve=solve_coarse_shadow(target,fine_matrix,fine_rhs,
         static_cast<int>(fine_rhs_dofs),mapping,prefix_blocks);
+    const auto post_correction=coarse_solve["converged"].get<bool>()
+        ? post_correct_shadow(target,fine_matrix,fine_rhs,static_cast<int>(fine_rhs_dofs))
+        : gipc::Json{{"attempted",false},{"stop_reason","coarse_solve_failed"},
+                     {"controls_solver",false}};
     CUDA_SAFE_CALL(cudaEventRecord(end));
     CUDA_SAFE_CALL(cudaEventSynchronize(end));
     float elapsed=0;
@@ -399,9 +529,16 @@ gipc::Json assemble_shadow(GalerkinState& target,
                  {"expanded_blocks_before_reduction",expanded},
                  {"coarse_unique_blocks",coarse.h_unique_key_number},
                  {"invalid_entries",invalid[0]},{"shadow_pipeline_ms",elapsed},
-                 {"coarse_solve",coarse_solve},{"controls_solver",false}};
+                 {"coarse_solve",coarse_solve},{"post_correction",post_correction},
+                 {"controls_solver",false}};
     return target.last;
 }
+
+}
+
+void configure_galerkin(int fine_correction_max_iterations)
+{
+    state.post_max_iterations=std::max(0,fine_correction_max_iterations);
 }
 
 gipc::Json update_galerkin_shadow(const GIPCTripletMatrix& fine_matrix,
@@ -512,6 +649,15 @@ gipc::Json galerkin_self_test()
     const Eigen::Map<const Eigen::VectorXd> actual_direction(host_direction.data(),host_direction.size());
     const double direction_error=(actual_direction-expected_fine_direction).norm()
         /std::max(1.0,expected_fine_direction.norm());
+    std::vector<double> host_corrected_direction;
+    local.fine_solution.copy_to_host(host_corrected_direction);
+    const Eigen::Map<const Eigen::VectorXd> corrected_direction(
+        host_corrected_direction.data(),host_corrected_direction.size());
+    const Eigen::VectorXd exact_fine_direction=dense.ldlt().solve(b);
+    const double initial_exact_error=(actual_direction-exact_fine_direction).norm()
+        /std::max(1.0,exact_fine_direction.norm());
+    const double corrected_exact_error=(corrected_direction-exact_fine_direction).norm()
+        /std::max(1.0,exact_fine_direction.norm());
     Eigen::VectorXd coarse_probe=Eigen::VectorXd::LinSpaced(expected.rows(),-0.7,0.9);
     Eigen::VectorXd fine_probe=Eigen::VectorXd::LinSpaced(dense.rows(),0.3,-0.5);
     const double adjoint_error=std::abs((prolongation*coarse_probe).dot(fine_probe)
@@ -531,10 +677,18 @@ gipc::Json galerkin_self_test()
         stats["coarse_solve"]["final_residual_norm"].get<double>()
         /stats["coarse_solve"]["initial_residual_norm"].get<double>();
     const double rhs_dot_direction=stats["coarse_solve"]["rhs_dot_direction"].get<double>();
+    const bool post_nonzero=stats["post_correction"]["nonzero_initial_guess"].get<bool>();
+    const int post_iterations=stats["post_correction"]["iterations"].get<int>();
+    const double post_reduction=stats["post_correction"]["residual_reduction_ratio"].get<double>();
+    const bool post_residual_reduced=stats["post_correction"]["residual_reduced"].get<bool>();
+    const double post_rhs_dot=stats["post_correction"]["rhs_dot_direction"].get<double>();
     if(matrix_error>1e-12 || rhs_error>1e-12 || symmetry_error>1e-14
        || direction_error>5e-3 || adjoint_error>1e-12 || !positive_definite
        || !coarse_converged || residual_ratio>=1.0 || rhs_dot_direction<=0
        || projected_residual_ratio>1e-3
+       || !post_nonzero || post_iterations>10 || !post_residual_reduced
+       || post_reduction>=1.0 || post_rhs_dot<=0
+       || corrected_exact_error>=initial_exact_error
        || planar_rank!=3 || collinear_rank!=2)
         throw std::runtime_error("Gate D mixed GPU Galerkin mismatch: matrix="
             +std::to_string(matrix_error)+", rhs="+std::to_string(rhs_error)
@@ -542,6 +696,9 @@ gipc::Json galerkin_self_test()
             +std::to_string(adjoint_error)+", direction="+std::to_string(direction_error)
             +", residual_ratio="+std::to_string(residual_ratio)
             +", projected_ratio="+std::to_string(projected_residual_ratio)
+            +", post_reduction="+std::to_string(post_reduction)
+            +", initial_exact_error="+std::to_string(initial_exact_error)
+            +", corrected_exact_error="+std::to_string(corrected_exact_error)
             +", spd="+(positive_definite?"true":"false")
             +", planar_rank="+std::to_string(planar_rank)
             +", collinear_rank="+std::to_string(collinear_rank));
@@ -553,6 +710,11 @@ gipc::Json galerkin_self_test()
             {"prolongated_direction_relative_error",direction_error},
             {"projected_residual_ratio",projected_residual_ratio},
             {"fine_residual_ratio",residual_ratio},{"rhs_dot_direction",rhs_dot_direction},
+            {"post_pcg_nonzero_initial_guess",post_nonzero},
+            {"post_pcg_iterations",post_iterations},{"post_pcg_iteration_cap",10},
+            {"post_pcg_residual_reduction_ratio",post_reduction},
+            {"coarse_direction_exact_error",initial_exact_error},
+            {"corrected_direction_exact_error",corrected_exact_error},
             {"planar_affine_basis_rank",planar_rank},{"collinear_affine_basis_rank",collinear_rank},
             {"block_shapes","1x1/1x4/4x1/4x4"},
             {"fine_block_nodes",fine_blocks},{"coarse_block_nodes",prefix_blocks+5},

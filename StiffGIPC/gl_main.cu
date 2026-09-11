@@ -1581,8 +1581,11 @@ void initScene()
     ipc.buildBVH();
     ipc.init(tetMesh.meanMass, tetMesh.meanVolum, tetMesh.minConer, tetMesh.maxConer, linear_system_buff_scale);
     if(runtime_options.agipc_diagnostics)
+    {
+        agipc::configure_galerkin(runtime_options.agipc_fine_correction_iterations);
         agipc::initialize_criterion(tetMesh,runtime_options.agipc_threshold,
                                     runtime_options.agipc_max_levels);
+    }
 
     printf("bboxDiagSize2: %f\n", ipc.bboxDiagSize2);
     printf("maxConer: %f  %f   %f           minCorner: %f  %f   %f\n",

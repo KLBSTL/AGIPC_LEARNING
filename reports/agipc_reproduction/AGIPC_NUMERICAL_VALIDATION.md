@@ -20,17 +20,18 @@ Result: exit 0.
 | Mixed indexing | all `1x1/1x4/4x1/4x4` shapes passed; adjoint error `5.551115123125783e-17` |
 | Geometry rank fixtures | planar affine basis rank `3`; collinear rank `2`, both detected as rank deficient |
 | Coarse PCG | converged; projected residual ratio `6.689865418268851e-4` under the paper `1e-3` tolerance; fine residual ratio after prolongation `0.29712101078523767`; `rhs_dot_direction=4.335198384840098` |
+| Fine post-PCG | starts from the nonzero prolonged direction; 9/10 iterations; residual reduction ratio `0.0023250257841851774`; relative error to the dense fine solution improved from `0.8234604603462874` to `0.0006660592178736782` |
 
 ## One-frame real-system gate
 
 Command used the existing short drive because the CUDA/CMake cache was configured at `S:`:
 
 ```text
-S:/build-agipc-reproduction/Release/gipc.exe --scene stiff-bunny-drop --tet-mesh S:/Assets/sorted_mesh/cube_sorted.16.msh --frames 1 --headless --agipc-diagnostics --metrics-path S:/perf_diag/agipc_coarse_pcg_cube.json
+S:/build-agipc-reproduction/Release/gipc.exe --scene stiff-bunny-drop --tet-mesh S:/Assets/sorted_mesh/cube_sorted.16.msh --frames 1 --headless --agipc-diagnostics --agipc-fine-correction-iterations 10 --metrics-path S:/perf_diag/agipc_post_pcg_cube.json
 ```
 
-Result: exit 0. Eight FEM nodes mapped to one translational coarse node; `child_sum=8`, remaining collapsible edges `0`, 26 fine unique blocks reduced to one coarse block, and invalid entries `0`. Coarse PCG converged in one iteration without nonpositive curvature.
+Result: exit 0. Eight FEM nodes mapped to one translational coarse node; `child_sum=8`, remaining collapsible edges `0`, 26 fine unique blocks reduced to one coarse block, and invalid entries `0`. Coarse PCG converged in one iteration. Fine post-PCG used the nonzero prolongated direction, reached the `1e-3` relative residual tolerance on iteration 10, reduced the residual by a factor of `2.3749251015407196e-5`, and recorded ten finite positive curvatures.
 
 Compared with `perf_diag/stiffgipc_cube_baseline.json`: `minimum_y` delta `0`, identical Newton count `2`, identical fine PCG total `5`, identical penetration `0`, and finite vertices in both runs. This confirms that the current shadow path does not modify the production direction.
 
-These checks establish criterion, mapping, mixed Galerkin, coarse PCG, and prolongation arithmetic. They do not establish an end-to-end AGIPC solver or a speedup.
+These checks establish criterion, mapping, mixed Galerkin, coarse PCG, prolongation, and limited fine post-PCG arithmetic. They do not establish an adopted end-to-end AGIPC solver or a speedup.

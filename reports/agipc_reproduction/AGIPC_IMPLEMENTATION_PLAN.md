@@ -122,6 +122,7 @@ Test rest tet `(0,0,0),(1,0,0),(0,1,0),(0,0,1)`; triangle uses first three point
 - [ ] For no-contact, ground, self-contact and contact-transition fixtures, freeze complete fine H/g and compare the mapped contact contributions to dense references.
 - [ ] Preserve all fine barrier/friction contributions before restriction. Execute original fine CCD and line search after solve.
 - [ ] Pair baseline/adaptive runs with equal scene parameters; verify finite vertices, minimum separation/ground penetration, final-state error and accepted line-search steps. Record failed cases, never suppress them in summaries.
+- [x] Run the first paired ground-contact transition: 30-frame cube, 66 Newton iterations in both routes, zero penetration, minimum-y delta `1.35e-10`, 66/66 AGIPC candidate adoptions. Self-contact and frozen contact-matrix checks remain open.
 
 ## Task H: metrics and paper pipeline
 

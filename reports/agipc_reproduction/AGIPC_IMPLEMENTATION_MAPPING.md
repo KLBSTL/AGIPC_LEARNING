@@ -1,6 +1,6 @@
 # AGIPC Implementation Mapping
 
-Status: 2026-09-11, experimental AGIPC-Core dispatch validated on the frozen SPD fixture and one-frame cube. Symmetric-Hessian and paper-BVH modes remain unavailable.
+Status: 2026-09-11, experimental AGIPC-Core dispatch validated on the frozen SPD fixture, one-frame cube, and a 30-frame ground-contact transition. Symmetric-Hessian and paper-BVH modes remain unavailable.
 
 | Paper component | Implementation | Current status |
 |---|---|---|
@@ -15,4 +15,4 @@ Status: 2026-09-11, experimental AGIPC-Core dispatch validated on the frozen SPD
 | Runtime truthfulness | `StiffGIPC/gipc/runtime_options.*`, `StiffGIPC/gl_main.cu` | `agipc-core` dispatches to the implemented route; SymHessian/Paper exit code 2 with the missing stages named |
 | MAS capacity prerequisite | `StiffGIPC/gipc/hierarchy_capacity.h`, `StiffGIPC/MASPreconditioner.*` | Semantic capacity alignment and bounds checks backported |
 
-Still required before treating `--solver agipc-core` as broadly validated: ground/self-contact transitions, fallback fixtures, equal-frame state comparisons on larger meshes, and repeated performance experiments. The paper Newton criterion, symmetric Hessian and stackless BVH are separate remaining stages. MAS on the coarse system remains a later comparison; the current block-Jacobi coarse preconditioner is an intermediate route.
+Still required before treating `--solver agipc-core` as broadly validated: self-contact transitions, failure-mode fallback fixtures beyond the tested dimension mismatch, equal-frame state comparisons on larger meshes, and repeated performance experiments. The paper Newton criterion, symmetric Hessian and stackless BVH are separate remaining stages. MAS on the coarse system remains a later comparison; the current block-Jacobi coarse preconditioner is an intermediate route.

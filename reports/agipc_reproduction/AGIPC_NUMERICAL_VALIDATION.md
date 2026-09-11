@@ -49,4 +49,12 @@ Result: exit 0. Both linear solves adopted the validated candidate (`adoptions=2
 
 Against `perf_diag/stiffgipc_cube_baseline.json`, both routes used two Newton iterations. The minimum-y difference was `1.11e-16` and penetration difference was `0`. AGIPC-Core reported 9 aggregate coarse/post iterations versus 5 baseline PCG iterations. Its single measured simulation time was `94.10 ms` versus the stored baseline's `26.04 ms`; this tiny diagnostic workload is slower and is not a performance result. Warm-up and repeated interleaved experiments remain required.
 
-The pending mode check `--solver agipc-symhessian` exits with code 2 and names the unimplemented symmetric-Hessian and paper-BVH stages. The validated scope is therefore criterion, mapping, mixed Galerkin, coarse and post-PCG arithmetic, guarded direction adoption, and a no-penetration cube smoke run. Fine-contact regression suites and paper-scale performance are still open.
+The pending mode check `--solver agipc-symhessian` exits with code 2 and names the unimplemented symmetric-Hessian and paper-BVH stages. At this point the validated scope includes criterion, mapping, mixed Galerkin, coarse and post-PCG arithmetic, guarded direction adoption, and a one-frame cube smoke run. The next section adds a ground-contact transition; self-contact and paper-scale performance remain open.
+
+## Thirty-frame ground-contact transition
+
+The focused contact comparison used the same Release executable and cube for 30 frames, once with `--solver stiffgipc` and once with `--solver agipc-core`. Metrics are in `perf_diag/stiffgipc_cube_contact30.json` and `perf_diag/agipc_core_cube_contact30.json`.
+
+Both runs completed 30 frames and 66 Newton iterations with finite vertices and zero ground penetration. Their final minimum-y values differed by `1.3523449027275092e-10` at approximately `-0.999942`. AGIPC-Core adopted all 66 candidate directions with no fallback. The criterion protected 112 of 1728 accumulated edge samples, so this run exercised changing strain tags as well as the ground-contact transition.
+
+The measured simulation times were `1101.86 ms` for AGIPC-Core and `333.50 ms` for StiffGIPC, a ratio of `3.30x` on this eight-node mesh. This is a negative overhead result, not a paper comparison: coarse assembly, diagnostics and fine post-PCG dominate at this scale. It confirms contact-path compatibility but leaves self-contact, larger contact systems and repeated performance trials open.

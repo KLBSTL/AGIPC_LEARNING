@@ -10941,7 +10941,8 @@ int              GIPC::solve_subIP(device_TetraData& TetMesh,
         //                        * sqrt(Newton_solver_threshold * Newton_solver_threshold * bboxDiagSize2)
         //                        * IPC_dt * IPC_dt);
 
-        if(k && gradVanish)
+        const bool adaptive_solver=agipc::galerkin_adoption_enabled();
+        if(!adaptive_solver && k && gradVanish)
         {
             break;
         }
@@ -10950,6 +10951,21 @@ int              GIPC::solve_subIP(device_TetraData& TetMesh,
         auto cg_count = calculateMovingDirection(TetMesh, h_cpNum[0], pcg_data.P_type);
         if(frozen_linear_diagnostics_complete())
             return k + 1;
+        if(adaptive_solver)
+        {
+            constexpr double agipc_newton_relative_tolerance=1e-3;
+            const double current_direction_norm=
+                calcMinMovement(_moveDir,pcg_data.squeue,vertexNum);
+            const double direction_tolerance=
+                sqrt(agipc_newton_relative_tolerance*agipc_newton_relative_tolerance
+                     *bboxDiagSize2*IPC_dt*IPC_dt);
+            stats_at_current_frame["newton"].back()["agipc_current_direction_norm"]=
+                current_direction_norm;
+            stats_at_current_frame["newton"].back()["agipc_direction_tolerance"]=
+                direction_tolerance;
+            if(k && current_direction_norm<direction_tolerance)
+                break;
+        }
         //std::cout << "[" << k << "]"
         //          << "cg_count = " << cg_count << std::endl;
         total_Cg_count += cg_count;

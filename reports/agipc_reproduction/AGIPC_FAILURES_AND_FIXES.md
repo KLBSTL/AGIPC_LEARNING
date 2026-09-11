@@ -19,3 +19,7 @@ After CMake detected `agipc_galerkin.cu`, the first parallel build reached the l
 ## Absolute post-PCG breakdown threshold rejected a tiny valid system
 
 The first real cube run reduced the fine residual to `0.07735` of its prolongated value, then stopped because `r^T M^-1 r` was below the fixed `1e-30` guard. The right-hand side itself was only about `5.8e-14`, so the fixed guard was not scale invariant. The post-PCG recurrence now checks finite positive preconditioned residuals instead. The repeated run reached the relative residual tolerance in 10 iterations, reduced the residual by `2.3749251015407196e-5`, and all recorded curvatures were finite and positive.
+
+## AGIPC Newton gate initially inherited the scene's 1e-2 threshold
+
+The first current-direction integration reused `Newton_solver_threshold`, which the small headless scene sets to `1e-2`. The paper contract requires `1e-3 * bbox_diagonal * dt`; the 30-frame probe consequently stopped after 38 Newton iterations and was rejected as evidence. AGIPC-Core now uses an explicit `1e-3` constant while StiffGIPC preserves its scene threshold and previous-direction behavior.

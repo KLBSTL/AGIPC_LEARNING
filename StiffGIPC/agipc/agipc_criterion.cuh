@@ -30,6 +30,7 @@ gipc::Json update_criterion(device_TetraData& mesh);
 gipc::Json update_mapping();
 MappingDeviceView mapping_device_view();
 void configure_galerkin(int fine_correction_max_iterations, bool adoption_enabled);
+bool galerkin_adoption_enabled();
 gipc::Json update_galerkin_shadow(const GIPCTripletMatrix& fine_matrix,
                                   const double* fine_rhs,
                                   std::size_t fine_rhs_dofs);

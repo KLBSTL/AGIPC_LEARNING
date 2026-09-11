@@ -114,7 +114,7 @@ Test rest tet `(0,0,0),(1,0,0),(0,1,0),(0,0,1)`; triangle uses first three point
 - [x] Prolongate using the exact adjoint; post-PCG on full fine H starts from that solution, uses a block diagonal preconditioner and honors the runtime cap including cap0.
 - [x] Test a nonzero initial correction state on a frozen SPD H/g and a real cube system; record projected residual reduction, finite direction, signed curvature and the residual trace.
 - [x] Add experimental `--solver agipc-core` dispatch after A–D/E pass. Capture attempted/adopted/fallback counters and reasons, and retain the original solver as the guarded fallback.
-- [ ] Apply current-direction Newton criterion with dt factor after solve; retain baseline's old behavior as frozen provenance and separately disclose common paper stopping/tolerance adapters.
+- [x] Apply the current-direction Newton criterion with dt factor after the AGIPC-Core solve; retain the baseline's previous-direction behavior as frozen provenance and record the current norm and threshold per Newton step.
 - [ ] Strict diagnostics compute full gradient RMS and full-space displacement; separate diagnostic timing.
 
 ## Task F: fine contact preservation
@@ -122,7 +122,7 @@ Test rest tet `(0,0,0),(1,0,0),(0,1,0),(0,0,1)`; triangle uses first three point
 - [ ] For no-contact, ground, self-contact and contact-transition fixtures, freeze complete fine H/g and compare the mapped contact contributions to dense references.
 - [ ] Preserve all fine barrier/friction contributions before restriction. Execute original fine CCD and line search after solve.
 - [ ] Pair baseline/adaptive runs with equal scene parameters; verify finite vertices, minimum separation/ground penetration, final-state error and accepted line-search steps. Record failed cases, never suppress them in summaries.
-- [x] Run the first paired ground-contact transition: 30-frame cube, 66 Newton iterations in both routes, zero penetration, minimum-y delta `1.35e-10`, 66/66 AGIPC candidate adoptions. Self-contact and frozen contact-matrix checks remain open.
+- [x] Run the first paired ground-contact transition with the paper current-direction threshold: 30-frame cube, zero penetration, minimum-y delta `1.30e-6`, 42 AGIPC applied steps versus 66 baseline steps, and 72/72 AGIPC linear candidate adoptions. Self-contact and frozen contact-matrix checks remain open.
 
 ## Task H: metrics and paper pipeline
 

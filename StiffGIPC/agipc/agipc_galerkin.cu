@@ -54,7 +54,7 @@ GalerkinState state;
 __device__ void transform_for_block(int fine_block,int prefix_blocks,
                                     const int* fine_to_coarse,
                                     const int* coarse_block_bases,
-                                    const int* affine_flags,
+                                    const int* basis_masks,
                                     const double3* rest_positions,
                                     int& base,int& width,double phi[4])
 {
@@ -66,27 +66,28 @@ __device__ void transform_for_block(int fine_block,int prefix_blocks,
     const int local=fine_block-prefix_blocks;
     const int coarse=fine_to_coarse[local];
     base=prefix_blocks+coarse_block_bases[coarse];
-    width=affine_flags[coarse]?4:1;
-    if(width==4)
-    {
-        const double3 x=rest_positions[local];
-        phi[1]=x.x; phi[2]=x.y; phi[3]=x.z;
-    }
+    const int mask=basis_masks[coarse];
+    width=__popc(static_cast<unsigned>(mask));
+    const double3 x=rest_positions[local];
+    const double raw[4]={1.0,x.x,x.y,x.z};
+    int output=0;
+    for(int column=0;column<4;++column)
+        if(mask&(1<<column)) phi[output++]=raw[column];
 }
 
 __global__ void count_expanded_blocks(const int* fine_rows,const int* fine_cols,
                                       int* counts,const int* fine_to_coarse,
                                       const int* coarse_block_bases,
-                                      const int* affine_flags,const double3* rest_positions,
+                                      const int* basis_masks,const double3* rest_positions,
                                       int prefix_blocks,int count)
 {
     const int i=blockIdx.x*blockDim.x+threadIdx.x;
     if(i>=count) return;
     int row_base,row_width,col_base,col_width; double row_phi[4],col_phi[4];
     transform_for_block(fine_rows[i],prefix_blocks,fine_to_coarse,coarse_block_bases,
-                        affine_flags,rest_positions,row_base,row_width,row_phi);
+                        basis_masks,rest_positions,row_base,row_width,row_phi);
     transform_for_block(fine_cols[i],prefix_blocks,fine_to_coarse,coarse_block_bases,
-                        affine_flags,rest_positions,col_base,col_width,col_phi);
+                        basis_masks,rest_positions,col_base,col_width,col_phi);
     counts[i]=fine_rows[i]==fine_cols[i]
         ? row_width*(row_width+1)/2 : row_width*col_width;
 }
@@ -95,7 +96,7 @@ __global__ void emit_expanded_blocks(const Eigen::Matrix3d* fine_values,
                            const int* fine_rows,const int* fine_cols,
                            Eigen::Matrix3d* coarse_values,int* coarse_rows,int* coarse_cols,
                            const int* offsets,const int* fine_to_coarse,
-                           const int* coarse_block_bases,const int* affine_flags,
+                           const int* coarse_block_bases,const int* basis_masks,
                            const double3* rest_positions,int prefix_blocks,
                            int fine_block_count,int* invalid_entries,int count)
 {
@@ -112,9 +113,9 @@ __global__ void emit_expanded_blocks(const Eigen::Matrix3d* fine_values,
     }
     int row_base,row_width,col_base,col_width; double row_phi[4],col_phi[4];
     transform_for_block(row,prefix_blocks,fine_to_coarse,coarse_block_bases,
-                        affine_flags,rest_positions,row_base,row_width,row_phi);
+                        basis_masks,rest_positions,row_base,row_width,row_phi);
     transform_for_block(col,prefix_blocks,fine_to_coarse,coarse_block_bases,
-                        affine_flags,rest_positions,col_base,col_width,col_phi);
+                        basis_masks,rest_positions,col_base,col_width,col_phi);
     const Eigen::Matrix3d input=fine_values[i];
     int output=offsets[i];
     for(int a=0;a<row_width;++a) for(int b=0;b<col_width;++b)
@@ -142,7 +143,7 @@ __global__ void reduce_mixed_rhs(const double* fine_rhs,
                            double* coarse_rhs,
                            const int* fine_to_coarse,
                            const int* coarse_block_bases,
-                           const int* affine_flags,
+                           const int* basis_masks,
                            const double3* rest_positions,int prefix_blocks,
                            int* invalid_entries,
                            int fine_blocks)
@@ -151,7 +152,7 @@ __global__ void reduce_mixed_rhs(const double* fine_rhs,
     if(block>=fine_blocks) return;
     int base,width; double phi[4];
     transform_for_block(block,prefix_blocks,fine_to_coarse,coarse_block_bases,
-                        affine_flags,rest_positions,base,width,phi);
+                        basis_masks,rest_positions,base,width,phi);
     for(int component=0;component<3;++component)
     {
         const double value=fine_rhs[3*block+component];
@@ -210,12 +211,12 @@ __global__ void update_p(double* p,const double* z,double beta,int count)
 
 __global__ void prolongate_mixed(const double* coarse,double* fine,
                                  const int* fine_to_coarse,const int* bases,
-                                 const int* affine,const double3* rest,int prefix,int fine_blocks)
+                                 const int* basis_masks,const double3* rest,int prefix,int fine_blocks)
 {
     const int block=blockIdx.x*blockDim.x+threadIdx.x;
     if(block>=fine_blocks) return;
     int base,width; double phi[4];
-    transform_for_block(block,prefix,fine_to_coarse,bases,affine,rest,base,width,phi);
+    transform_for_block(block,prefix,fine_to_coarse,bases,basis_masks,rest,base,width,phi);
     for(int component=0;component<3;++component)
     {
         double value=0;
@@ -446,7 +447,7 @@ gipc::Json solve_coarse_shadow(GalerkinState& target,const GIPCTripletMatrix& fi
     target.prolonged.resize(fine_dofs);
     prolongate_mixed<<<(fine.block_rows()+kThreads-1)/kThreads,kThreads>>>(
         target.coarse_solution.data(),target.prolonged.data(),mapping.fine_to_coarse,
-        mapping.coarse_block_bases,mapping.affine_flags,mapping.rest_positions,
+        mapping.coarse_block_bases,mapping.basis_masks,mapping.rest_positions,
         prefix_blocks,fine.block_rows());
     target.fine_ax.resize(fine_dofs); target.fine_residual.resize(fine_dofs);
     spmv.warp_reduce_sym_spmv(1.0,
@@ -507,7 +508,7 @@ gipc::Json assemble_shadow(GalerkinState& target,
     count_expanded_blocks<<<(fine_unique+kThreads-1)/kThreads,kThreads>>>(
         fine_matrix.block_row_indices(),fine_matrix.block_col_indices(),
         target.expansion_counts.data(),mapping.fine_to_coarse,mapping.coarse_block_bases,
-        mapping.affine_flags,mapping.rest_positions,prefix_blocks,fine_unique);
+        mapping.basis_masks,mapping.rest_positions,prefix_blocks,fine_unique);
     thrust::exclusive_scan(thrust::device_ptr<int>(target.expansion_counts.data()),
         thrust::device_ptr<int>(target.expansion_counts.data())+fine_unique,
         thrust::device_ptr<int>(target.expansion_offsets.data()));
@@ -527,11 +528,11 @@ gipc::Json assemble_shadow(GalerkinState& target,
         fine_matrix.block_col_indices(),coarse.block_values(),
         coarse.block_row_indices(),coarse.block_col_indices(),
         target.expansion_offsets.data(),mapping.fine_to_coarse,
-        mapping.coarse_block_bases,mapping.affine_flags,mapping.rest_positions,
+        mapping.coarse_block_bases,mapping.basis_masks,mapping.rest_positions,
         prefix_blocks,fine_blocks,target.invalid_entries.data(),fine_unique);
     reduce_mixed_rhs<<<(fine_blocks+kThreads-1)/kThreads,kThreads>>>(
         fine_rhs,target.coarse_rhs.data(),mapping.fine_to_coarse,
-        mapping.coarse_block_bases,mapping.affine_flags,mapping.rest_positions,
+        mapping.coarse_block_bases,mapping.basis_masks,mapping.rest_positions,
         prefix_blocks,target.invalid_entries.data(),fine_blocks);
     CUDA_SAFE_CALL(cudaGetLastError());
 
@@ -672,7 +673,7 @@ gipc::Json galerkin_self_test()
     // Old coarse id 0 is affine and is sorted after translational old id 1.
     cudatool::CudaDeviceBuffer<int> mapping(std::vector<int>{0,0,0,0,1,1});
     cudatool::CudaDeviceBuffer<int> coarse_bases(std::vector<int>{1,0});
-    cudatool::CudaDeviceBuffer<int> affine_flags(std::vector<int>{1,0});
+    cudatool::CudaDeviceBuffer<int> basis_masks(std::vector<int>{15,1});
     std::vector<double3> rest={make_double3(0,0,0),make_double3(1,0,0),
                                make_double3(0,1,0),make_double3(0,0,1),
                                make_double3(-0.1,0.8,-0.6),make_double3(0.9,0.4,0.2)};
@@ -684,7 +685,7 @@ gipc::Json galerkin_self_test()
     GalerkinState local;
     local.adoption_enabled=true;
     const auto stats=assemble_shadow(local,fine,device_b.data(),b.size(),
-        {mapping.data(),coarse_bases.data(),affine_flags.data(),device_rest.data(),
+        {mapping.data(),coarse_bases.data(),basis_masks.data(),device_rest.data(),
          fine_fem_nodes,coarse_fem_nodes,1,1,5,true});
 
     Eigen::MatrixXd prolongation=Eigen::MatrixXd::Zero(3*fine_blocks,

@@ -15,10 +15,10 @@ Result: exit 0.
 | Gate | Evidence |
 |---|---|
 | Criterion | 10 cases; max absolute tensor error `4.098284211995207e-17`; history, strict equality, monotonic thresholds, boundary and NaN protection passed |
-| Mapping | 5 cases; indirect connectivity, protected edge, 7-node tail, 32-versus-33 affine boundary, hierarchy and repeat determinism passed |
+| Mapping | 7 cases; indirect connectivity, protected edge, 7-node tail, 32-versus-33 affine boundary, hierarchy, repeat determinism and rank-aware planar/linear bases passed |
 | Mixed Galerkin | relative matrix error `8.747661209037898e-17`; RHS error `0`; symmetry error `9.308113199029161e-18`; SPD Cholesky passed |
 | Mixed indexing | all `1x1/1x4/4x1/4x4` shapes passed; adjoint error `5.551115123125783e-17` |
-| Geometry rank fixtures | planar affine basis rank `3`; collinear rank `2`, both detected as rank deficient |
+| Geometry rank fixtures | planar affine basis rank `3`; collinear rank `2`; the runtime basis now removes dependent coordinate columns instead of constructing a singular 12-DoF aggregate |
 | Coarse PCG | converged; projected residual ratio `6.689865418268851e-4` under the paper `1e-3` tolerance; fine residual ratio after prolongation `0.29712101078523767`; `rhs_dot_direction=4.335198384840098` |
 | Fine post-PCG | starts from the nonzero prolonged direction; 9/10 iterations; residual reduction ratio `0.0023250257841851774`; relative error to the dense fine solution improved from `0.8234604603462874` to `0.0006660592178736782` |
 | Adoption/fallback | exact device copy error `0`; dimension mismatch selected the fallback; incomplete mappings are withheld from the candidate path |
@@ -58,3 +58,9 @@ The focused contact comparison used the same Release executable and cube for 30 
 Both runs completed 30 frames with finite vertices and zero ground penetration. Their final minimum-y values differed by `1.3044243131199451e-6` at approximately `-0.999943`. StiffGIPC reported 66 applied Newton steps with its previous-direction/scene-threshold convention; AGIPC-Core reported 42 applied steps using the newly solved direction and paper `1e-3 * bbox_diagonal * dt` threshold. AGIPC performed 72 linear solves because each timestep needs a final current-direction solve before it can stop; all 72 candidates were adopted and none fell back. The criterion protected 112 of 1296 accumulated edge samples, so the run exercised changing strain tags and the ground-contact transition.
 
 The measured simulation times were `582.13 ms` for AGIPC-Core and `333.50 ms` for StiffGIPC, a ratio of `1.75x` on this eight-node mesh. This is a negative overhead result, not a paper comparison: coarse assembly, diagnostics and fine post-PCG dominate at this scale. It confirms contact-path compatibility under the paper Newton threshold but leaves self-contact, larger contact systems and repeated performance trials open.
+
+## Rank-aware mixed ABD/FEM gate
+
+The reduced Figure 12 coupling scene used one ABD bunny plus the existing 17x17 FEM cloth fixture for one frame. The first run exposed a real mixed-space defect: the planar cloth was assigned the fixed basis `[1,x,y,z]`, whose `y` column is zero, so only 7 of 8 coarse diagonal blocks were invertible and both AGIPC candidates fell back. The runtime now selects independent coordinate columns from each aggregate's centered rest positions. The same planar aggregate uses three blocks, while volumetric aggregates retain four.
+
+The repaired run in `perf_diag/agipc_core_fig12_hybrid_rankaware1.json` completed with `rank_reduced_affine_nodes=1`, 7 coarse blocks, 7 invertible diagonal blocks, `invalid_entries=0`, one adopted physical Newton direction and one conservative fallback during the final near-zero-residual check. It remained finite with zero penetration. Against `perf_diag/stiffgipc_fig12_hybrid_smoke1.json`, minimum-y differed by `2.77417179506134e-10`; applied Newton steps were 1 versus 2 and reported PCG iterations were 1 versus 7. Simulation times were `99.80 ms` and `99.86 ms`, respectively, which is effectively tied at this scale and is not a paper speedup measurement.

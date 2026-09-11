@@ -8,6 +8,10 @@ The 7-isolated-node mapping fixture failed inside Thrust with `cudaErrorInvalidD
 
 The first mixed test assigned only two fine nodes to a 12-DoF affine aggregate. Galerkin matrix and RHS errors were at machine precision, but Cholesky correctly reported a singular coarse system. The positive fixture now uses four noncoplanar child points. Separate planar and collinear fixtures retain rank 3 and rank 2 evidence so singular geometry is diagnosed rather than hidden.
 
+## Planar cloth produced a singular runtime affine aggregate
+
+The first reduced mixed ABD/FEM scene mapped all 289 cloth vertices to one fixed four-column affine basis `[1,x,y,z]`. Because the rest cloth lies exactly on `y=0`, one coarse diagonal block was zero: only 7 of 8 diagonal blocks were invertible, `invalid_entries` became 1, and both candidates fell back. Mapping now computes a pivoted rank of centered rest coordinates and stores a compact basis mask per aggregate. The planar cloth uses `[1,x,z]`, producing 7 total mixed coarse blocks with all 7 diagonals invertible and `invalid_entries=0`; volumetric aggregates retain all four columns. Planar and line fixtures are part of the mapping self-test.
+
 ## Symmetric-half expansion of affine diagonal blocks
 
 Naively emitting and canonicalizing all 16 sub-blocks of an affine fine diagonal doubles off-diagonal coarse blocks. Fine diagonal blocks now emit only the upper triangular affine sub-blocks. Off-diagonal fine blocks still emit the full product, and collapsed coarse diagonals explicitly add the transposed half. Dense `P^T A P` comparison is below `1e-16` relative error.

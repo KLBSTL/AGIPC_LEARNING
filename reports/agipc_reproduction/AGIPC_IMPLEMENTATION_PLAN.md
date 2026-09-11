@@ -103,9 +103,9 @@ Test rest tet `(0,0,0),(1,0,0),(0,1,0),(0,0,1)`; triangle uses first three point
 
 ## Task D: mixed affine system
 
-- [ ] Add child_count33 versus32 boundary tests. Sort nodes by 3/12 DoF class, build inverse coarse permutation and block bases.
-- [ ] Implement rest basis `[1,X,Y,Z]`, mixed 1/4/4/16 block expansion and generalized q-column indexing. Include ABD prefix and cross terms without aggregating ABD bodies.
-- [ ] Compare all four transformed block shapes to dense U; adjoint test `dot(U*x,y)==dot(x,U.T*y)`; check rank of planar/collinear affine fixtures and diagnose singular coarse systems explicitly.
+- [x] Add child_count33 versus32 boundary tests. Sort nodes by 3/12 DoF class and build coarse block bases, with rank-aware 4/3/2/1-column layouts for volumetric/planar/linear/point aggregates.
+- [x] Implement rest basis `[1,X,Y,Z]`, variable-width mixed block expansion and generalized q-column indexing. Include ABD prefix and cross terms without aggregating ABD bodies.
+- [x] Compare all four full-rank transformed block shapes to dense U; pass the adjoint test and planar/collinear rank gates. The reduced Figure 12 mixed scene now produces 7/7 valid coarse diagonal blocks and adopts an AGIPC direction.
 - [ ] Run rotating free-fall object with full-space/3-only/mixed routes; save equal-frame states and angular/dynamic comparisons. Gate D fails if mixed indexing or physical restoration is invalid.
 
 ## Task E/G: actual solver dispatch and termination
@@ -123,6 +123,7 @@ Test rest tet `(0,0,0),(1,0,0),(0,1,0),(0,0,1)`; triangle uses first three point
 - [ ] Preserve all fine barrier/friction contributions before restriction. Execute original fine CCD and line search after solve.
 - [ ] Pair baseline/adaptive runs with equal scene parameters; verify finite vertices, minimum separation/ground penetration, final-state error and accepted line-search steps. Record failed cases, never suppress them in summaries.
 - [x] Run the first paired ground-contact transition with the paper current-direction threshold: 30-frame cube, zero penetration, minimum-y delta `1.30e-6`, 42 AGIPC applied steps versus 66 baseline steps, and 72/72 AGIPC linear candidate adoptions. Self-contact and frozen contact-matrix checks remain open.
+- [x] Run a reduced mixed ABD/FEM cloth gate: one ABD bunny plus 289-node planar cloth, zero penetration, minimum-y delta `2.77e-10`, 7 independent coarse blocks, and one adopted physical direction. The final near-zero-residual check conservatively used the baseline fallback.
 
 ## Task H: metrics and paper pipeline
 

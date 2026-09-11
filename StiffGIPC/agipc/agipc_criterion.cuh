@@ -13,7 +13,7 @@ struct MappingDeviceView
 {
     const int* fine_to_coarse = nullptr;
     const int* coarse_block_bases = nullptr;
-    const int* affine_flags = nullptr;
+    const int* basis_masks = nullptr;
     const double3* rest_positions = nullptr;
     int fine_nodes = 0;
     int coarse_nodes = 0;

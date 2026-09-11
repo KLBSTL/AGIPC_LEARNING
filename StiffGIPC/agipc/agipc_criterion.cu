@@ -47,8 +47,11 @@ struct Workspace
     cudatool::CudaDeviceBuffer<int> component_prefix, current_to_next;
     cudatool::CudaDeviceBuffer<int> fine_to_coarse, fine_to_next, child_counts;
     cudatool::CudaDeviceBuffer<int> affine_flags, affine_prefix;
+    cudatool::CudaDeviceBuffer<int> basis_masks, affine_block_widths;
+    cudatool::CudaDeviceBuffer<int> affine_block_prefix;
     cudatool::CudaDeviceBuffer<int> coarse_sorted_ids, coarse_block_bases;
     cudatool::CudaDeviceBuffer<double3> rest_positions;
+    std::vector<double3> rest_positions_host;
     cudatool::CudaDeviceBuffer<int> remaining_edges;
     cudaEvent_t start = nullptr, end = nullptr;
     size_t updates = 0, protected_sum = 0, collapsible_sum = 0;
@@ -179,20 +182,41 @@ __global__ void count_children(const int* map, int* counts, int fine_count)
     if(i<fine_count) atomicAdd(counts+map[i],1);
 }
 
-__global__ void classify_coarse_nodes(const int* child_counts,int* affine_flags,int count)
-{
-    const int i=blockIdx.x*blockDim.x+threadIdx.x;
-    if(i<count) affine_flags[i]=child_counts[i]>32?1:0;
-}
-
 __global__ void write_coarse_layout(const int* affine_flags,const int* affine_prefix,
+                                    const int* affine_block_prefix,
                                     int* sorted_ids,int* block_bases,int n3,int count)
 {
     const int i=blockIdx.x*blockDim.x+threadIdx.x;
     if(i>=count) return;
     const int sorted=affine_flags[i] ? n3+affine_prefix[i] : i-affine_prefix[i];
     sorted_ids[i]=sorted;
-    block_bases[i]=sorted<n3 ? sorted : n3+4*(sorted-n3);
+    block_bases[i]=affine_flags[i] ? n3+affine_block_prefix[i] : sorted;
+}
+
+int affine_basis_mask(const std::vector<double3>& points)
+{
+    if(points.empty()) return 1;
+    Eigen::MatrixXd centered(points.size(),3);
+    Eigen::Vector3d mean=Eigen::Vector3d::Zero();
+    for(const auto& p: points) mean+=Eigen::Vector3d(p.x,p.y,p.z);
+    mean/=static_cast<double>(points.size());
+    for(size_t i=0;i<points.size();++i)
+        centered.row(i)=Eigen::Vector3d(points[i].x,points[i].y,points[i].z)-mean;
+    Eigen::ColPivHouseholderQR<Eigen::MatrixXd> qr(centered);
+    qr.setThreshold(1e-10);
+    const int rank=qr.rank();
+    int mask=1;
+    const auto order=qr.colsPermutation().indices();
+    for(int i=0;i<rank;++i) mask|=1<<(1+order[i]);
+    return mask;
+}
+
+int basis_width(int mask)
+{
+    int width=0;
+    for(int column=0;column<4;++column)
+        width+=(mask>>column)&1;
+    return width;
 }
 
 __global__ void count_uncollapsed_allowed_edges(const uint2* edges,const int* tags,
@@ -231,6 +255,8 @@ void reserve_mapping(Workspace& w)
     w.component_prefix.resize(n); w.current_to_next.resize(n);
     w.fine_to_coarse.resize(n); w.fine_to_next.resize(n); w.child_counts.resize(n);
     w.affine_flags.resize(n); w.affine_prefix.resize(n);
+    w.basis_masks.resize(n); w.affine_block_widths.resize(n);
+    w.affine_block_prefix.resize(n);
     w.coarse_sorted_ids.resize(n); w.coarse_block_bases.resize(n);
     w.remaining_edges.resize(1);
 }
@@ -299,23 +325,49 @@ gipc::Json build_mapping(Workspace& w)
     const bool complete=remaining[0]==0;
     w.coarse_vertices=current;
     const int coarse_blocks=(current+threads-1)/threads;
-    classify_coarse_nodes<<<coarse_blocks,threads>>>(w.child_counts.data(),
-                                                     w.affine_flags.data(),current);
+    std::vector<int> fine_map;
+    w.fine_to_coarse.copy_to_host(fine_map);
+    std::vector<std::vector<double3>> coarse_points(current);
+    for(int i=0;i<w.fine_vertices;++i)
+        coarse_points.at(fine_map.at(i)).push_back(w.rest_positions_host.at(i));
+    std::vector<int> affine_flags(current),basis_masks(current,1),affine_widths(current,0);
+    int rank_reduced_affine_nodes=0;
+    for(int i=0;i<current;++i)
+    {
+        affine_flags[i]=children[i]>32?1:0;
+        if(affine_flags[i])
+        {
+            basis_masks[i]=affine_basis_mask(coarse_points[i]);
+            affine_widths[i]=basis_width(basis_masks[i]);
+            if(affine_widths[i]<4) ++rank_reduced_affine_nodes;
+        }
+    }
+    w.affine_flags.copy_from_host(affine_flags);
+    w.basis_masks.copy_from_host(basis_masks);
+    w.affine_block_widths.copy_from_host(affine_widths);
     thrust::exclusive_scan(thrust::device_ptr<int>(w.affine_flags.data()),
         thrust::device_ptr<int>(w.affine_flags.data())+current,
         thrust::device_ptr<int>(w.affine_prefix.data()));
+    thrust::exclusive_scan(thrust::device_ptr<int>(w.affine_block_widths.data()),
+        thrust::device_ptr<int>(w.affine_block_widths.data())+current,
+        thrust::device_ptr<int>(w.affine_block_prefix.data()));
     const int n12=thrust::reduce(thrust::device_ptr<int>(w.affine_flags.data()),
         thrust::device_ptr<int>(w.affine_flags.data())+current,0);
+    const int affine_blocks=thrust::reduce(
+        thrust::device_ptr<int>(w.affine_block_widths.data()),
+        thrust::device_ptr<int>(w.affine_block_widths.data())+current,0);
     const int n3=current-n12;
     write_coarse_layout<<<coarse_blocks,threads>>>(w.affine_flags.data(),
-        w.affine_prefix.data(),w.coarse_sorted_ids.data(),w.coarse_block_bases.data(),n3,current);
+        w.affine_prefix.data(),w.affine_block_prefix.data(),w.coarse_sorted_ids.data(),
+        w.coarse_block_bases.data(),n3,current);
     CUDA_SAFE_CALL(cudaGetLastError());
     w.translational_vertices=n3;
     w.affine_vertices=n12;
-    w.coarse_block_vertices=n3+4*n12;
+    w.coarse_block_vertices=n3+affine_blocks;
     return {{"method","paper_warp_hash"},{"fine_nodes",w.fine_vertices},
             {"coarse_nodes",current},{"mapping_levels",levels.size()},{"levels",levels},
             {"translational_nodes",n3},{"affine_nodes",n12},
+            {"rank_reduced_affine_nodes",rank_reduced_affine_nodes},
             {"coarse_block_nodes",w.coarse_block_vertices},
             {"min_children",min_children},{"max_children",max_children},
             {"child_sum",child_sum},{"remaining_collapsible_edges",remaining[0]},
@@ -380,6 +432,7 @@ void initialize_criterion(const tetrahedra_obj& mesh, double threshold, int max_
     rest.reserve(counts.fem_point_num);
     for(size_t i=0;i<counts.fem_point_num;++i)
         rest.push_back(mesh.vertexes.at(counts.fem_point_offset+i));
+    w.rest_positions_host=rest;
     w.rest_positions.copy_from_host(rest);
     w.edges.copy_from_host(edges); w.offsets.copy_from_host(offsets);
     w.adjacent.copy_from_host(adjacent);
@@ -405,7 +458,7 @@ gipc::Json update_mapping()
 MappingDeviceView mapping_device_view()
 {
     const auto& w=workspace;
-    return {w.fine_to_coarse.data(),w.coarse_block_bases.data(),w.affine_flags.data(),
+    return {w.fine_to_coarse.data(),w.coarse_block_bases.data(),w.basis_masks.data(),
             w.rest_positions.data(),w.fine_vertices,w.coarse_vertices,
             w.translational_vertices,w.affine_vertices,w.coarse_block_vertices,
             w.enabled && workspace.mapping_complete};
@@ -568,6 +621,9 @@ gipc::Json mapping_self_test()
     auto run=[&](int nodes,const std::vector<uint2>& edges,const std::vector<int>& tags,
                  const std::vector<int>& expected,int expected_affine) {
         Workspace w; w.fine_vertices=nodes; w.fine_offset=0; w.max_levels=16;
+        for(int i=0;i<nodes;++i)
+            w.rest_positions_host.push_back(
+                make_double3(i%3,(i/3)%3,i/9));
         w.edges.copy_from_host(edges); w.tags.copy_from_host(tags); reserve_mapping(w);
         const auto stats=build_mapping(w);
         std::vector<int> actual; w.fine_to_coarse.copy_to_host(actual);
@@ -596,7 +652,19 @@ gipc::Json mapping_self_test()
     chain.clear(); tags.assign(32,1); expected.assign(33,0);
     for(int i=0;i<32;++i) chain.push_back(make_uint2(i,i+1));
     run(33,chain,tags,expected,1);
+    std::vector<double3> planar,linear;
+    for(int i=0;i<9;++i)
+    {
+        planar.push_back(make_double3(i%3,0,i/3));
+        linear.push_back(make_double3(i,0,0));
+    }
+    if(basis_width(affine_basis_mask(planar))!=3)
+        throw std::runtime_error("Gate D planar affine basis must have rank 3");
+    ++cases;
+    if(basis_width(affine_basis_mask(linear))!=2)
+        throw std::runtime_error("Gate D linear affine basis must have rank 2");
+    ++cases;
     return {{"test","agipc_mapping"},{"passed",true},{"cases",cases},
-            {"gpu_kernels",true},{"covered","indirect/protected/7-tail/32-vs-33-affine/hierarchy/determinism"}};
+            {"gpu_kernels",true},{"covered","indirect/protected/7-tail/32-vs-33-affine/hierarchy/determinism/rank-aware-basis"}};
 }
 }

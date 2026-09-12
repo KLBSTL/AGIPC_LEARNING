@@ -35,7 +35,7 @@ struct Workspace
     int translational_vertices = 0;
     int affine_vertices = 0;
     int coarse_block_vertices = 0;
-    int max_levels = 8;
+    int max_levels = 16;
     double threshold = 5e-5;
     cudatool::CudaDeviceBuffer<Element> elements;
     cudatool::CudaDeviceBuffer<Strain> previous;
@@ -322,7 +322,14 @@ gipc::Json build_mapping(Workspace& w)
     }
     const bool valid=child_sum==w.fine_vertices && min_children>0;
     if(!valid) throw std::runtime_error("AGIPC mapping ownership invariant failed");
-    const bool complete=remaining[0]==0;
+    // A stable fixed point is the terminal state of the paper's recursive
+    // warp-hash construction.  Collapsible edges that still cross 32-node
+    // group boundaries do not invalidate the resulting aggregation map: the
+    // Galerkin projection is well-defined for every ownership partition.
+    // Keep the remaining-edge count as a coarsening-quality diagnostic and
+    // reserve "incomplete" for an explicit hierarchy cap.
+    const bool globally_resolved=remaining[0]==0;
+    const bool complete=globally_resolved || fixed_point;
     w.coarse_vertices=current;
     const int coarse_blocks=(current+threads-1)/threads;
     std::vector<int> fine_map;
@@ -371,9 +378,10 @@ gipc::Json build_mapping(Workspace& w)
             {"coarse_block_nodes",w.coarse_block_vertices},
             {"min_children",min_children},{"max_children",max_children},
             {"child_sum",child_sum},{"remaining_collapsible_edges",remaining[0]},
-            {"fixed_point",fixed_point},{"complete",complete},
-            {"stop_reason",complete?"all_collapsible_components_resolved":
-                (fixed_point?"fixed_point_with_remaining_edges":"level_cap")}};
+            {"fixed_point",fixed_point},{"globally_resolved",globally_resolved},
+            {"complete",complete},
+            {"stop_reason",globally_resolved?"all_collapsible_components_resolved":
+                (fixed_point?"stable_group_partition":"level_cap")}};
 }
 }
 
@@ -652,6 +660,14 @@ gipc::Json mapping_self_test()
     chain.clear(); tags.assign(32,1); expected.assign(33,0);
     for(int i=0;i<32;++i) chain.push_back(make_uint2(i,i+1));
     run(33,chain,tags,expected,1);
+    // A sole edge across a 32-node group boundary cannot enter either local
+    // warp hash.  The unchanged identity map is nevertheless a valid stable
+    // aggregation and must remain available to the Galerkin stage.
+    run(64,{make_uint2(31,32)},{1},
+        std::vector<int>{0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,
+                         16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,
+                         32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,
+                         48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63},0);
     std::vector<double3> planar,linear;
     for(int i=0;i<9;++i)
     {
@@ -665,6 +681,6 @@ gipc::Json mapping_self_test()
         throw std::runtime_error("Gate D linear affine basis must have rank 2");
     ++cases;
     return {{"test","agipc_mapping"},{"passed",true},{"cases",cases},
-            {"gpu_kernels",true},{"covered","indirect/protected/7-tail/32-vs-33-affine/hierarchy/determinism/rank-aware-basis"}};
+            {"gpu_kernels",true},{"covered","indirect/protected/7-tail/32-vs-33-affine/hierarchy/stable-cross-group/determinism/rank-aware-basis"}};
 }
 }

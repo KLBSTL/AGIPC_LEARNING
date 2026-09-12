@@ -34,7 +34,7 @@ struct RuntimeOptions
     std::string fem_final_state_path;
     double      agipc_threshold = 5e-5;
     std::string agipc_mapping   = "warp-hash";
-    int         agipc_max_levels = 8;
+    int         agipc_max_levels = 16;
     int         agipc_fine_correction_iterations = 10;
     bool        agipc_diagnostics = false;
     bool        agipc_self_test   = false;

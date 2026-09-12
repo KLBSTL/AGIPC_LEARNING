@@ -90,9 +90,9 @@ Test rest tet `(0,0,0),(1,0,0),(0,1,0),(0,0,1)`; triangle uses first three point
 - [ ] Independent CPU BFS/union-find on allowed edges serves only as the expected partition; production remains CUDA.
 - [ ] Implement one group first: self bit, neighbor bits, transitive closure, first-bit representative, rank among elected representatives. Use shared immutable hashes plus explicit synchronization or a uniform shuffle schedule.
 - [ ] Cover isolated components within a full warp, chain length32, groups1/7/16/31/32 and partial last group. Example allowed edges `(0,2),(2,4),(1,3)` must produce sets `{0,2,4},{1,3}`.
-- [ ] Add exclusive scans, compose mappings, persistent child counts and next-level edges; restart identity every Newton iteration.
-- [ ] Record per-level counts and fixed-point/cap reason; verify no arbitrary cap masquerades as a minimal map. Pad capacity; test disconnected inter-group ordering cases.
-- [ ] Run Gate B with valid indices, exactly one owner, nonempty coarse nodes and child sum equality. Freeze graph/tags/map on failure.
+- [x] Add exclusive scans, compose mappings, persistent child counts and next-level edges; restart identity every Newton iteration.
+- [x] Record per-level counts and fixed-point/cap reason; accept stable cross-group partitions, retain unresolved-link diagnostics, use a 16-level default, and cover a disconnected boundary-edge fixed point.
+- [x] Run Gate B with valid indices, exactly one owner, nonempty coarse nodes and child sum equality. The focused GPU gate includes hierarchy, determinism, tail, protected-edge and stable cross-group cases.
 
 ## Task C: translational Galerkin
 
@@ -141,7 +141,7 @@ Test rest tet `(0,0,0),(1,0,0),(0,1,0),(0,0,1)`; triangle uses first three point
 - [ ] Fig14: same dragon E=3e5, dt=.005/.01/.02/.04, physical duration1.5s, document fractional-frame policy. Lower dt should yield lower active ratios.
 - [x] Fig15 reduced preflight: 289-node cloth on a fixed ABD sphere at E=1e6, dt=.01; active ratio `0.02389`, direct final-state error recorded, negative single-pair runtime retained.
 - [x] Fig15 capacity preflight: existing 16,641-node cloth on the fixed ABD sphere at E=1e6, dt=.01; both CEMAS16 routes pass one no-contact frame at 49,935 fine DoF, with 21 final AGIPC coarse DoF. This is not an exact paper asset.
-- [x] Fig15 larger contact gate: both routes pass 35 frames with finite states and zero penetration; paired RMS terminal error is `0.01995` (`3.44%` of baseline displacement). AGIPC is `2.98x` slower, with 351/734 complete mappings and 186/734 adopted candidates, so mapping/candidate recovery precedes repeated timing.
+- [x] Fig15 larger contact gate: both routes pass 35 frames with finite states and zero penetration; paired RMS terminal error is `0.01995` (`3.44%` of baseline displacement). The original AGIPC run is `2.98x` slower. A focused 27-frame rerun validates the stable-partition correction with 114/114 eligible maps and 88/114 adopted candidates; downstream correction quality remains the next blocker.
 - [ ] Fig15 exact assets: cloth on ABD sphere E=1e6, dt=.01, 10K/51K/92K first; only larger runs after measured capacity headroom.
 - [ ] Warm up and interleave S/A/A/S until each method has >=3 measured trials. Hash every executable/mesh; store immutable JSON in perf_history and CSV/JSON summaries.
 - [ ] Complete AGIPC_IMPLEMENTATION_MAPPING.md, AGIPC_NUMERICAL_VALIDATION.md, AGIPC_PERFORMANCE_ANALYSIS.md, AGIPC_FAILURES_AND_FIXES.md and AGIPC_PAPER_COMPARISON.md with actual results. Separate numerical/trend/quantitative levels; retain negative results.

@@ -15,7 +15,7 @@ Result: exit 0.
 | Gate | Evidence |
 |---|---|
 | Criterion | 10 cases; max absolute tensor error `4.098284211995207e-17`; history, strict equality, monotonic thresholds, boundary and NaN protection passed |
-| Mapping | 7 cases; indirect connectivity, protected edge, 7-node tail, 32-versus-33 affine boundary, hierarchy, repeat determinism and rank-aware planar/linear bases passed |
+| Mapping | 8 cases; indirect connectivity, protected edge, 7-node tail, 32-versus-33 affine boundary, hierarchy, stable cross-group partition, repeat determinism and rank-aware planar/linear bases passed |
 | Mixed Galerkin | relative matrix error `8.747661209037898e-17`; RHS error `0`; symmetry error `9.308113199029161e-18`; SPD Cholesky passed |
 | Mixed indexing | all `1x1/1x4/4x1/4x4` shapes passed; adjoint error `5.551115123125783e-17` |
 | Geometry rank fixtures | planar affine basis rank `3`; collinear rank `2`; the runtime basis now removes dependent coordinate columns instead of constructing a singular 12-DoF aggregate |
@@ -98,3 +98,17 @@ The run also exposes the current large-contact mapping limit. Of 734 Newton mapp
 AGIPC reported `57.678 s`, 699 applied Newton steps, and 50,224 aggregate coarse/post or fallback-PCG iterations. StiffGIPC reported `19.365 s`, 270 Newton steps, and 18,265 PCG iterations. The `2.98x` slowdown is a negative single-pair result. Its dominant causes are the 74.7% candidate fallback rate and 2.59x Newton-count increase; repeated timing is not justified until mapping completion and candidate acceptance improve.
 
 The runtime now accumulates typed `fallback_reason_counts` instead of retaining only the last adoption result. A focused one-frame rerun in `perf_diag/agipc_core_fig15_16k_fallback_reasons1.json` reports its single conservative fallback as `post_residual_not_reduced`; both other candidates were adopted. The full AGIPC GPU self-test still passes, including the dimension-mismatch fallback counter. The saved 35-frame snapshot predates these counters, so its 165 downstream candidate failures are not retroactively assigned a cause.
+
+## Stable-partition contact rerun
+
+The old 35-frame evidence classified 334 stable warp-hash fixed points as incomplete because they retained collapsible edges across 32-node group boundaries. This was stricter than the paper's local hash recursion and unnecessarily withheld valid ownership maps from Galerkin assembly. The implementation now treats no-progress as a valid `stable_group_partition`, reports `globally_resolved=false` plus the remaining-edge count, and reserves incomplete status for a hierarchy cap that is still reducing. The default cap is now 16 levels.
+
+The GPU self-test adds a 64-node graph whose only edge crosses the 31/32 group boundary. Its deterministic identity partition is valid, retains one diagnostic edge, and passes all ownership invariants. The Release build and the complete criterion/mapping/Galerkin self-test exited 0.
+
+The focused runtime command advanced the 16,641-node Figure 15 cloth through the first contact frame:
+
+```text
+S:/build-agipc-reproduction/Release/gipc.exe --scene paper-fig15-cloth-abd-scaled --solver agipc-core --cloth-mesh T:/cloth_129x129.obj --framework abd-cemas-srbk --frames 27 --headless --agipc-fine-correction-iterations 10 --metrics-path S:/perf_diag/agipc_core_fig15_16k_stable_mapping27.json --fem-final-state-path S:/perf_diag/agipc_core_fig15_16k_stable_mapping27.csv
+```
+
+It exited 0 with 27 completed frames, finite vertices, zero ground penetration, and fixed-ABD maximum displacement `5.55e-17`. All 114 per-solve mappings were eligible for Galerkin assembly: 78 eliminated every collapsible edge and 36 terminated as stable cross-group partitions. The stable maps spanned 43 to 16,109 coarse nodes and retained 145 to 3,183 diagnostic cross-group links. Candidate adoption rose to 88/114; all 26 fallbacks were downstream `post_residual_not_reduced`, with no `mapping_incomplete` fallback. Full evidence is stored in `perf_diag/agipc_core_fig15_16k_stable_mapping27_stats.json`. Because accepting these maps changes the Newton trajectory, this run is a control-flow and stability validation rather than a direct timing comparison with the earlier 35-frame trajectory.

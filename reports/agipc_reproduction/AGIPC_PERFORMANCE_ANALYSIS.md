@@ -1,6 +1,6 @@
 # AGIPC Performance Analysis
 
-Status: provisional reduced-scale evidence as of 2026-09-11. No paper-scale speedup has been reproduced.
+Status: provisional reduced-scale evidence as of 2026-09-12. No paper-scale speedup has been reproduced.
 
 ## Reduced Figure 15 preflight
 
@@ -51,3 +51,5 @@ The same cloth was run for 35 frames so that it contacted the fixed ABD sphere. 
 | Final coarse DoF | 60 | n/a |
 
 The measured time ratio is `2.98`; AGIPC also used 2.59x the Newton steps and 2.75x the reported linear iterations. Mapping remained incomplete on 383 attempts, while another 165 completed mappings failed candidate validation. The final active ratio of `60 / 49935 = 0.1202%` shows that DoF reduction itself is aggressive, but low mapping completion and adoption rates erase its benefit. The accumulated adaptive shadow pipeline time was `6.607 s`, about 11.5% of AGIPC simulation time; the larger cost comes from extra Newton work and fine-solver fallbacks. Repeated timing is deferred until those controls improve.
+
+This 35-frame pair predates the stable-partition correction. The shortest runtime check that reaches contact is the 27-frame `agipc_core_fig15_16k_stable_mapping27` run. Its 114 mapping attempts comprise 78 globally resolved maps and 36 stable cross-group partitions, with no mapping-stage fallback. It adopted 88 candidates and typed all 26 remaining fallbacks as `post_residual_not_reduced`. Reported simulation time was `8.053 s`, but this unpaired run validates control flow and numerical stability only; it is not a replacement speed measurement. The next performance work should target post-correction quality before repeating the full paired benchmark.

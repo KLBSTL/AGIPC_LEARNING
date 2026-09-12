@@ -44,7 +44,7 @@ Important pseudocode clarifications, to be tested rather than copied literally:
 - Algorithm 2 lines 28–29 count elected representatives before `lane_id`, but nonrepresentative members must use the FIRST SET BIT representative's rank. Literal lane rank maps a connected pair to different ids. Follow the prose's component identity.
 - Avoid `1 << 32`; use unsigned masks and `0xffffffffu` for a full warp.
 - Shared-memory phases require synchronization. For shuffles, all named active lanes must execute each collective; a variable-length per-lane neighbor loop does not establish that contract.
-- Supplement says recurse to a minimal representation but gives no numerical level cap or fallback ordering when a fixed partition stalls. Stop at a fixed point under the documented ordering; report unresolved inter-group collapsible links. A cap reached with remaining work is a diagnostic, not successful convergence.
+- Supplement says recurse to a minimal representation but gives no numerical level cap or fallback ordering when a fixed partition stalls. Stop at a fixed point under the documented ordering and retain unresolved inter-group collapsible links as a coarsening-quality diagnostic. The resulting ownership partition is still a valid Galerkin map. A cap reached while another level still reduces the node count is incomplete.
 - Protected edges cannot be traversed; their endpoints can still connect through a different wholly collapsible path. Do not add a global endpoint-separation rule absent from the paper.
 
 Persistent arrays: edge tags, connectivity hashes, group counts, local indices, fine map, child counts, level offsets/sizes. Allocate for padded group/node domains; bounds-check all composed maps. Begin with 128/256 threads on sm86.

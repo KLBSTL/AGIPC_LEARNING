@@ -1,6 +1,7 @@
 #pragma once
 #include <gipc/utils/json.h>
 #include <cstddef>
+#include <string>
 #include <vector_types.h>
 
 class tetrahedra_obj;
@@ -29,13 +30,19 @@ void begin_criterion_step(device_TetraData& mesh);
 gipc::Json update_criterion(device_TetraData& mesh);
 gipc::Json update_mapping();
 MappingDeviceView mapping_device_view();
-void configure_galerkin(int fine_correction_max_iterations, bool adoption_enabled);
+void configure_galerkin(int fine_correction_max_iterations,
+                        bool adoption_enabled,
+                        std::string fallback_diagnostics_directory = {});
 bool galerkin_adoption_enabled();
 gipc::Json update_galerkin_shadow(const GIPCTripletMatrix& fine_matrix,
                                   const double* fine_rhs,
                                   std::size_t fine_rhs_dofs);
 gipc::Json adopt_galerkin_candidate(double* destination, std::size_t destination_dofs);
 void record_linear_solve_timing(gipc::Json timing);
+void record_fallback_direction_quality(const GIPCTripletMatrix& fine_matrix,
+                                       const double* fine_rhs,
+                                       const double* fine_direction,
+                                       std::size_t fine_dofs);
 gipc::Json criterion_summary();
 gipc::Json galerkin_summary();
 gipc::Json criterion_self_test();

@@ -116,6 +116,7 @@ Test rest tet `(0,0,0),(1,0,0),(0,1,0),(0,0,1)`; triangle uses first three point
 - [x] Add experimental `--solver agipc-core` dispatch after A–D/E pass. Capture attempted/adopted/fallback counters plus aggregate typed reasons, and retain the original solver as the guarded fallback.
 - [x] Apply the current-direction Newton criterion with dt factor after the AGIPC-Core solve; retain the baseline's previous-direction behavior as frozen provenance and record the current norm and threshold per Newton step.
 - [x] Add a baseline-only `--newton-stop paper-current` ablation and per-Newton Galerkin/CCD/line-search diagnostics. On the 27-frame 16K contact gate, the matched fine baseline needed 177 applied updates versus AGIPC's 94; neither route performed energy or intersection backtracks.
+- [x] Freeze representative mild/moderate/severe post-residual fallbacks and independently compare prolonged, corrected and fine directions. The first divergent stage is post-correction selection; restore the prolongated direction when exact residual grows beyond `1e-6` relative tolerance.
 - [ ] Strict diagnostics compute full gradient RMS and full-space displacement. Per-stage CUDA timing is implemented and has isolated coarse-PCG and unused fine-preconditioner costs; low-perturbation benchmark timing remains open.
 
 ## Task F: fine contact preservation

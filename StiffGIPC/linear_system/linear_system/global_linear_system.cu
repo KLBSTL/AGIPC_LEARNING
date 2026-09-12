@@ -265,6 +265,9 @@ gipc::SizeT GlobalLinearSystem::solve_linear_system()
         CUDA_SAFE_CALL(cudaEventDestroy(solver_end));
         CUDA_SAFE_CALL(cudaEventDestroy(distribute_end));
     }
+    if(measure_stages && !adopted)
+        agipc::record_fallback_direction_quality(*gipc_global_triplet,
+                                                 m_b.data(),m_x.data(),m_x.size());
     return iter;
 }
 

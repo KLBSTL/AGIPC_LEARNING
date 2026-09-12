@@ -7,7 +7,12 @@
 
 #include <Eigen/Dense>
 #include <algorithm>
+#include <array>
+#include <chrono>
 #include <cmath>
+#include <filesystem>
+#include <fstream>
+#include <limits>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -22,6 +27,7 @@ namespace agipc
 namespace
 {
 constexpr int kThreads=256;
+constexpr double kResidualGrowthTolerance=1e-6;
 
 struct GalerkinState
 {
@@ -53,6 +59,11 @@ struct GalerkinState
     double total_coarse_solve_ms=0;
     double total_post_correction_ms=0;
     gipc::Json total_linear_timing=gipc::Json::object();
+    std::string fallback_diagnostics_directory;
+    std::array<bool,3> frozen_quality_categories={false,false,false};
+    std::size_t direction_quality_evaluations=0;
+    std::size_t residual_guard_restores=0;
+    gipc::Json frozen_fallback_samples=gipc::Json::array();
 };
 
 GalerkinState state;
@@ -243,6 +254,58 @@ double device_dot(const double* a,const double* b,int count)
         thrust::device_ptr<const double>(a)+count,thrust::device_ptr<const double>(b),0.0);
 }
 
+template <typename T>
+void write_binary(const std::filesystem::path& path,const T* device_values,std::size_t count)
+{
+    std::vector<T> host(count);
+    if(count>0)
+        CUDA_SAFE_CALL(cudaMemcpy(host.data(),device_values,count*sizeof(T),cudaMemcpyDeviceToHost));
+    std::ofstream output(path,std::ios::binary|std::ios::trunc);
+    output.write(reinterpret_cast<const char*>(host.data()),
+                 static_cast<std::streamsize>(host.size()*sizeof(T)));
+}
+
+gipc::Json direction_metrics(GalerkinState& target,
+                             const GIPCTripletMatrix& fine_matrix,
+                             const double* fine_rhs,
+                             const double* direction,
+                             int fine_dofs)
+{
+    gipc::Spmv spmv;
+    target.fine_ax.resize(fine_dofs);
+    target.fine_residual.resize(fine_dofs);
+    spmv.warp_reduce_sym_spmv(1.0,
+        const_cast<Eigen::Matrix3d*>(fine_matrix.block_values()),
+        const_cast<int*>(fine_matrix.block_row_indices()),
+        const_cast<int*>(fine_matrix.block_col_indices()),fine_matrix.h_unique_key_number,
+        cudatool::CDenseVectorView<double>(direction,fine_dofs),0.0,
+        cudatool::DenseVectorView<double>(target.fine_ax.data(),fine_dofs));
+    form_residual<<<(fine_dofs+kThreads-1)/kThreads,kThreads>>>(
+        fine_rhs,target.fine_ax.data(),target.fine_residual.data(),fine_dofs);
+    const double residual2=device_dot(target.fine_residual.data(),
+                                      target.fine_residual.data(),fine_dofs);
+    const double norm2=device_dot(direction,direction,fine_dofs);
+    const double rhs_dot=device_dot(fine_rhs,direction,fine_dofs);
+    const double quadratic=device_dot(direction,target.fine_ax.data(),fine_dofs);
+    return {{"residual_norm",std::sqrt(std::max(0.0,residual2))},
+            {"direction_norm",std::sqrt(std::max(0.0,norm2))},
+            {"rhs_dot_direction",rhs_dot},{"direction_dot_A_direction",quadratic},
+            {"predicted_quadratic_decrease",rhs_dot-0.5*quadratic}};
+}
+
+int quality_category(double post_reduction)
+{
+    if(post_reduction<=1.25) return 0;
+    if(post_reduction<=2.0) return 1;
+    return 2;
+}
+
+const char* quality_category_name(int category)
+{
+    constexpr const char* names[]={"mild","moderate","severe"};
+    return names[std::clamp(category,0,2)];
+}
+
 gipc::Json post_correct_shadow(GalerkinState& target,const GIPCTripletMatrix& fine,
                                const double* fine_rhs,int fine_dofs)
 {
@@ -263,7 +326,8 @@ gipc::Json post_correct_shadow(GalerkinState& target,const GIPCTripletMatrix& fi
     {
         const double reduction=initial2>0?1.0:0.0;
         const bool candidate_valid=std::isfinite(initial2) && std::isfinite(initial_solution2)
-            && std::isfinite(initial_rhs_dot) && reduction<=1.0+1e-12
+            && std::isfinite(initial_rhs_dot)
+            && reduction<=1.0+kResidualGrowthTolerance
             && (initial_rhs_dot>0 || rhs2==0);
         return {{"attempted",true},{"converged",initial2<=1e-6*rhs2},
                 {"stop_reason","cap_zero_ablation"},
@@ -367,6 +431,20 @@ gipc::Json post_correct_shadow(GalerkinState& target,const GIPCTripletMatrix& fi
     form_residual<<<(fine_dofs+kThreads-1)/kThreads,kThreads>>>(fine_rhs,
         target.fine_ax.data(),target.fine_residual.data(),fine_dofs);
     residual2=device_dot(target.fine_residual.data(),target.fine_residual.data(),fine_dofs);
+    const double raw_final_residual2=residual2;
+    const double raw_reduction=initial2>0
+        ? std::sqrt(std::max(0.0,raw_final_residual2)/initial2)
+        : (raw_final_residual2==0?0.0:std::numeric_limits<double>::infinity());
+    std::string selected_solution="post_corrected";
+    if(!std::isfinite(raw_reduction)
+       || raw_reduction>1.0+kResidualGrowthTolerance)
+    {
+        CUDA_SAFE_CALL(cudaMemcpy(target.fine_solution.data(),target.prolonged.data(),
+                                  fine_dofs*sizeof(double),cudaMemcpyDeviceToDevice));
+        residual2=initial2;
+        selected_solution="prolongated_residual_guard";
+        ++target.residual_guard_restores;
+    }
     const bool converged=residual2<=tolerance2;
     const double final_solution2=device_dot(target.fine_solution.data(),
                                             target.fine_solution.data(),fine_dofs);
@@ -375,7 +453,8 @@ gipc::Json post_correct_shadow(GalerkinState& target,const GIPCTripletMatrix& fi
     const bool accepted_stop=stop_reason=="residual_tolerance" || stop_reason=="iteration_cap";
     const bool candidate_valid=accepted_stop && std::isfinite(residual2)
         && std::isfinite(final_solution2) && std::isfinite(rhs_dot_direction)
-        && reduction<=1.0+1e-12 && (rhs_dot_direction>0 || rhs2==0);
+        && reduction<=1.0+kResidualGrowthTolerance
+        && (rhs_dot_direction>0 || rhs2==0);
     return {{"attempted",true},{"converged",converged},{"stop_reason",stop_reason},
             {"iterations",iterations},{"max_iterations",max_iterations},
             {"relative_tolerance",1e-3},{"tolerance_reference","fine_rhs_norm"},
@@ -384,9 +463,13 @@ gipc::Json post_correct_shadow(GalerkinState& target,const GIPCTripletMatrix& fi
             {"nonzero_initial_guess",initial_solution2>0},
             {"initial_residual_norm",std::sqrt(std::max(0.0,initial2))},
             {"recursive_final_residual_norm",std::sqrt(std::max(0.0,recursive_residual2))},
+            {"raw_final_residual_norm",std::sqrt(std::max(0.0,raw_final_residual2))},
+            {"raw_residual_reduction_ratio",raw_reduction},
             {"final_residual_norm",std::sqrt(std::max(0.0,residual2))},
             {"residual_reduction_ratio",reduction},
-            {"residual_reduced",std::isfinite(reduction) && reduction<=1.0+1e-12},
+            {"residual_reduced",std::isfinite(reduction)
+                && reduction<=1.0+kResidualGrowthTolerance},
+            {"selected_solution",selected_solution},
             {"rhs_dot_direction",rhs_dot_direction},{"residual_history",residual_history},
             {"curvature_history",curvature_history},{"candidate_valid",candidate_valid},
             {"controls_solver",false}};
@@ -653,10 +736,17 @@ gipc::Json adopt_candidate(GalerkinState& target,double* destination,
 
 }
 
-void configure_galerkin(int fine_correction_max_iterations, bool adoption_enabled)
+void configure_galerkin(int fine_correction_max_iterations,
+                        bool adoption_enabled,
+                        std::string fallback_diagnostics_directory)
 {
     state.post_max_iterations=std::max(0,fine_correction_max_iterations);
     state.adoption_enabled=adoption_enabled;
+    state.fallback_diagnostics_directory=std::move(fallback_diagnostics_directory);
+    state.frozen_quality_categories={false,false,false};
+    state.direction_quality_evaluations=0;
+    state.residual_guard_restores=0;
+    state.frozen_fallback_samples=gipc::Json::array();
 }
 
 bool galerkin_adoption_enabled()
@@ -689,6 +779,138 @@ void record_linear_solve_timing(gipc::Json timing)
     }
 }
 
+void record_fallback_direction_quality(const GIPCTripletMatrix& fine_matrix,
+                                       const double* fine_rhs,
+                                       const double* fine_direction,
+                                       std::size_t fine_dofs)
+{
+    if(state.fallback_diagnostics_directory.empty() || state.last.is_null()
+       || state.last_adoption.value("reason",std::string{})
+              !="post_residual_not_reduced"
+       || state.candidate_dofs!=fine_dofs || fine_dofs==0)
+        return;
+
+    const auto comparison_start=std::chrono::steady_clock::now();
+    const int dofs=static_cast<int>(fine_dofs);
+    auto candidate=direction_metrics(state,fine_matrix,fine_rhs,
+                                     state.fine_solution.data(),dofs);
+    auto fine=direction_metrics(state,fine_matrix,fine_rhs,fine_direction,dofs);
+    const double candidate_dot_fine=device_dot(state.fine_solution.data(),
+                                                fine_direction,dofs);
+    const double candidate_norm=candidate.value("direction_norm",0.0);
+    const double fine_norm=fine.value("direction_norm",0.0);
+    const double cosine_denominator=candidate_norm*fine_norm;
+    const double cosine=cosine_denominator>0
+        ? std::clamp(candidate_dot_fine/cosine_denominator,-1.0,1.0) : 0.0;
+    const double difference2=std::max(0.0,candidate_norm*candidate_norm
+        +fine_norm*fine_norm-2.0*candidate_dot_fine);
+    const double candidate_residual=candidate.value("residual_norm",0.0);
+    const double fine_residual=fine.value("residual_norm",0.0);
+    const double post_reduction=
+        state.last["post_correction"].value("residual_reduction_ratio",1.0);
+    const int category=quality_category(post_reduction);
+    const auto comparison_end=std::chrono::steady_clock::now();
+    gipc::Json quality={
+        {"failure_reason","post_residual_not_reduced"},
+        {"post_residual_reduction_ratio",post_reduction},
+        {"candidate",candidate},{"fine_fallback",fine},
+        {"candidate_to_fine_residual_ratio",candidate_residual
+            /std::max(fine_residual,1e-300)},
+        {"candidate_to_fine_direction_norm_ratio",candidate_norm
+            /std::max(fine_norm,1e-300)},
+        {"candidate_fine_cosine",cosine},
+        {"candidate_fine_angle_degrees",std::acos(cosine)*180.0/3.14159265358979323846},
+        {"relative_direction_difference",std::sqrt(difference2)
+            /std::max(fine_norm,1e-300)},
+        {"quality_category",quality_category_name(category)},
+        {"comparison_ms",std::chrono::duration<double,std::milli>(
+            comparison_end-comparison_start).count()},
+        {"fine_dofs",fine_dofs},
+        {"fine_unique_blocks",fine_matrix.h_unique_key_number},
+        {"coarse_fem_nodes",state.last.value("coarse_fem_nodes",0)},
+        {"coarse_block_nodes",state.last.value("coarse_block_nodes",0)},
+        {"coarse_iterations",state.last["coarse_solve"].value("iterations",0)},
+        {"post_iterations",state.last["post_correction"].value("iterations",0)}};
+    ++state.direction_quality_evaluations;
+    quality["evaluation_index"]=state.direction_quality_evaluations;
+
+    if(!state.frozen_quality_categories[category])
+    {
+        const auto freeze_start=std::chrono::steady_clock::now();
+        const std::filesystem::path root(state.fallback_diagnostics_directory);
+        const std::string sample_name=std::string{"post_residual_"}
+            +quality_category_name(category)+"_"
+            +std::to_string(state.direction_quality_evaluations);
+        const auto sample_directory=root/sample_name;
+        std::filesystem::create_directories(sample_directory);
+        const std::size_t fine_unique=fine_matrix.h_unique_key_number;
+        write_binary(sample_directory/"fine_A_values.f64x9.bin",
+                     fine_matrix.block_values(),fine_unique);
+        write_binary(sample_directory/"fine_A_rows.i32.bin",
+                     fine_matrix.block_row_indices(),fine_unique);
+        write_binary(sample_directory/"fine_A_cols.i32.bin",
+                     fine_matrix.block_col_indices(),fine_unique);
+        write_binary(sample_directory/"fine_rhs.f64.bin",fine_rhs,fine_dofs);
+        write_binary(sample_directory/"agipc_candidate.f64.bin",
+                     state.fine_solution.data(),fine_dofs);
+        write_binary(sample_directory/"fine_fallback.f64.bin",fine_direction,fine_dofs);
+
+        const auto mapping=mapping_device_view();
+        write_binary(sample_directory/"fine_to_coarse.i32.bin",
+                     mapping.fine_to_coarse,mapping.fine_nodes);
+        write_binary(sample_directory/"coarse_block_bases.i32.bin",
+                     mapping.coarse_block_bases,mapping.coarse_nodes);
+        write_binary(sample_directory/"coarse_basis_masks.i32.bin",
+                     mapping.basis_masks,mapping.coarse_nodes);
+        write_binary(sample_directory/"fine_rest_positions.f64x3.bin",
+                     mapping.rest_positions,mapping.fine_nodes);
+
+        const std::size_t coarse_unique=state.coarse_matrix
+            ? state.coarse_matrix->h_unique_key_number : 0;
+        if(state.coarse_matrix)
+        {
+            write_binary(sample_directory/"coarse_A_values.f64x9.bin",
+                         state.coarse_matrix->block_values(),coarse_unique);
+            write_binary(sample_directory/"coarse_A_rows.i32.bin",
+                         state.coarse_matrix->block_row_indices(),coarse_unique);
+            write_binary(sample_directory/"coarse_A_cols.i32.bin",
+                         state.coarse_matrix->block_col_indices(),coarse_unique);
+            write_binary(sample_directory/"coarse_rhs.f64.bin",
+                         state.coarse_rhs.data(),state.coarse_rhs.size());
+            write_binary(sample_directory/"coarse_solution.f64.bin",
+                         state.coarse_solution.data(),state.coarse_solution.size());
+        }
+        quality["sample_name"]=sample_name;
+        quality["fine_block_nodes"]=fine_matrix.block_rows();
+        quality["fine_matrix_half_storage"]=true;
+        quality["coarse_unique_blocks"]=coarse_unique;
+        quality["mapping_fine_nodes"]=mapping.fine_nodes;
+        quality["mapping_coarse_nodes"]=mapping.coarse_nodes;
+        quality["artifacts"]={
+            {"fine_matrix",{"fine_A_values.f64x9.bin","fine_A_rows.i32.bin",
+                             "fine_A_cols.i32.bin"}},
+            {"fine_rhs","fine_rhs.f64.bin"},
+            {"agipc_candidate","agipc_candidate.f64.bin"},
+            {"fine_fallback","fine_fallback.f64.bin"},
+            {"mapping",{"fine_to_coarse.i32.bin","coarse_block_bases.i32.bin",
+                         "coarse_basis_masks.i32.bin","fine_rest_positions.f64x3.bin"}},
+            {"coarse_matrix",{"coarse_A_values.f64x9.bin","coarse_A_rows.i32.bin",
+                               "coarse_A_cols.i32.bin"}},
+            {"coarse_rhs","coarse_rhs.f64.bin"},
+            {"coarse_solution","coarse_solution.f64.bin"}};
+        quality["freeze_ms"]=std::chrono::duration<double,std::milli>(
+            std::chrono::steady_clock::now()-freeze_start).count();
+        state.frozen_quality_categories[category]=true;
+        state.frozen_fallback_samples.push_back(quality);
+        std::ofstream metadata(sample_directory/"metadata.json");
+        metadata<<quality.dump(2)<<'\n';
+        std::ofstream manifest(root/"manifest.json");
+        manifest<<gipc::Json{{"format","agipc_fallback_direction_v1"},
+            {"samples",state.frozen_fallback_samples}}.dump(2)<<'\n';
+    }
+    state.last["fallback_direction_quality"]=quality;
+}
+
 gipc::Json galerkin_summary()
 {
     if(state.last.is_null()) return nullptr;
@@ -699,6 +921,9 @@ gipc::Json galerkin_summary()
         {"coarse_solve",state.total_coarse_solve_ms},
         {"post_correction",state.total_post_correction_ms}};
     result["total_linear_system_timing_ms"]=state.total_linear_timing;
+    result["direction_quality_evaluations"]=state.direction_quality_evaluations;
+    result["residual_guard_restores"]=state.residual_guard_restores;
+    result["frozen_fallback_samples"]=state.frozen_fallback_samples;
     result["adoption_enabled"]=state.adoption_enabled;
     result["adoption_attempts"]=state.adoption_attempts;
     result["adoptions"]=state.adoptions;

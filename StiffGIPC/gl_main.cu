@@ -1619,8 +1619,19 @@ void initScene()
     const bool agipc_core_enabled=runtime_options.solver==gipc::SolverMode::AGIPC;
     if(runtime_options.agipc_diagnostics || agipc_core_enabled)
     {
+        std::string fallback_diagnostics_directory;
+        if(runtime_options.agipc_diagnostics)
+        {
+            const std::filesystem::path diagnostic_base=
+                runtime_options.metrics_path.empty()
+                    ? std::filesystem::path(gipc::output_dir())/"agipc_diagnostics.json"
+                    : std::filesystem::path(runtime_options.metrics_path);
+            fallback_diagnostics_directory=(diagnostic_base.parent_path()
+                /(diagnostic_base.stem().string()+"_fallback_samples")).string();
+        }
         agipc::configure_galerkin(runtime_options.agipc_fine_correction_iterations,
-                                  agipc_core_enabled);
+                                  agipc_core_enabled,
+                                  std::move(fallback_diagnostics_directory));
         agipc::initialize_criterion(tetMesh,runtime_options.agipc_threshold,
                                     runtime_options.agipc_max_levels);
     }

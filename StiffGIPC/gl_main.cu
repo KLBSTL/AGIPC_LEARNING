@@ -1615,6 +1615,7 @@ void initScene()
 
     ipc.buildBVH();
     ipc.init(tetMesh.meanMass, tetMesh.meanVolum, tetMesh.minConer, tetMesh.maxConer, linear_system_buff_scale);
+    ipc.set_paper_current_newton_stop(runtime_options.newton_stop == "paper-current");
     const bool agipc_core_enabled=runtime_options.solver==gipc::SolverMode::AGIPC;
     if(runtime_options.agipc_diagnostics || agipc_core_enabled)
     {
@@ -1907,6 +1908,11 @@ int run_headless()
     metrics["solver"]           = runtime_options.solver == gipc::SolverMode::AGIPC
                                       ? "agipc-core"
                                       : "stiffgipc";
+    metrics["newton_stop"]      = runtime_options.newton_stop;
+    metrics["newton_stop_effective"] =
+        runtime_options.newton_stop == "paper-current"
+            || runtime_options.solver == gipc::SolverMode::AGIPC
+            ? "paper-current" : "legacy-previous";
     metrics["tet_mesh"]         = runtime_options.tet_mesh;
     const bool agipc_active=runtime_options.agipc_diagnostics
                             || runtime_options.solver==gipc::SolverMode::AGIPC;

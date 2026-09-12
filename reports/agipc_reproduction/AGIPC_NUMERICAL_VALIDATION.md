@@ -1,6 +1,6 @@
 # AGIPC Numerical Validation
 
-Date: 2026-09-11. Build: Release, CUDA 13.0, `sm_86`, Visual Studio 2022. The executable supports the experimental `agipc-core` route; symmetric-Hessian and paper-BVH modes remain unavailable.
+Date: 2026-09-12. Build: Release, CUDA 13.0, `sm_86`, Visual Studio 2022. The executable supports the experimental `agipc-core` route; symmetric-Hessian and paper-BVH modes remain unavailable.
 
 ## Focused GPU gate
 
@@ -114,3 +114,17 @@ S:/build-agipc-reproduction/Release/gipc.exe --scene paper-fig15-cloth-abd-scale
 It exited 0 with 27 completed frames, finite vertices, zero ground penetration, and fixed-ABD maximum displacement `5.55e-17`. All 114 per-solve mappings were eligible for Galerkin assembly: 78 eliminated every collapsible edge and 36 terminated as stable cross-group partitions. The stable maps spanned 43 to 16,109 coarse nodes and retained 145 to 3,183 diagnostic cross-group links. Candidate adoption rose to 88/114; all 26 fallbacks were downstream `post_residual_not_reduced`, with no `mapping_incomplete` fallback. Full evidence is stored in `perf_diag/agipc_core_fig15_16k_stable_mapping27_stats.json`. Because accepting these maps changes the Newton trajectory, this run is a control-flow and stability validation rather than a direct timing comparison with the earlier 35-frame trajectory.
 
 A single follow-up ablation used `--agipc-fine-correction-iterations 20`. It stayed finite and penetration-free, but took 159 applied Newton steps and `11.518 s`, compared with 87 steps and `8.053 s` at the default cap 10. Its 186 attempts produced 176 adoptions, two post-residual fallbacks and eight coarse-solve residual failures. The higher adoption count did not improve nonlinear convergence, so the default was not changed. Evidence is in `perf_diag/agipc_core_fig15_16k_post20_27.json` and its matching stats snapshot.
+
+## Per-Newton direction quality and matched stopping rule
+
+The next 27-frame AGIPC run added one record per Newton solve for the Galerkin candidate result, feasible/CCD/accepted step lengths, line-search backtracks, and initial/tested energy. Evidence is in `perf_diag/agipc_core_fig15_16k_direction_quality27.json` and `perf_diag/agipc_core_fig15_16k_direction_quality27_stats.json`. It completed with finite vertices, zero ground penetration, fixed-ABD displacement below `5.56e-17`, 94 applied Newton updates plus 27 terminal direction checks, 8,689 aggregate linear iterations, and `8.879 s` reported simulation time. Of 121 Galerkin attempts, 73 were adopted and 48 fell back: 40 `post_residual_not_reduced`, seven `coarse_invalid_preconditioned_residual`, and one `coarse_iteration_cap`.
+
+Line search did not explain the long contact-frame tail. Of the 94 applied AGIPC updates, 89 accepted alpha 1; the minimum accepted alpha was `0.139561`. No update performed an energy or intersection backtrack. Frame 27 contained 67 applied updates and one terminal check. Its last 20 applied updates were full alpha fine-solver fallbacks, while the terminal direction norm reached `0.973890` of the paper tolerance.
+
+To separate solver behavior from termination semantics, the baseline gained `--newton-stop solver-default|paper-current`. The matched command was:
+
+```text
+S:/build-agipc-reproduction/Release/gipc.exe --scene paper-fig15-cloth-abd-scaled --solver stiffgipc --newton-stop paper-current --cloth-mesh T:/cloth_129x129.obj --framework abd-cemas-srbk --frames 27 --headless --metrics-path S:/perf_diag/stiffgipc_fig15_16k_paper_stop27.json --fem-final-state-path S:/perf_diag/stiffgipc_fig15_16k_paper_stop27.csv
+```
+
+After a clean rebuild, a one-frame legacy-stop health check returned the expected two applied Newton updates and 32 PCG iterations with finite, penetration-free output. The matched 27-frame baseline then completed with 177 applied updates plus 27 terminal checks, 7,179 PCG iterations, and `11.648 s` reported simulation time. Frame 27 alone required 101 applied updates; 172/177 updates accepted alpha 1, the minimum accepted alpha was `0.183667`, and no energy or intersection backtrack occurred. Its terminal direction norm was `0.996033` of the same tolerance. The strict current-direction gate therefore produces a large late-contact tail even in the original fine solver. In this single matched-stop pair AGIPC used 34 fewer frame-27 updates and 83 fewer updates overall, but cost more per update; this is diagnostic evidence, not a repeated speedup measurement.

@@ -55,3 +55,22 @@ The measured time ratio is `2.98`; AGIPC also used 2.59x the Newton steps and 2.
 This 35-frame pair predates the stable-partition correction. The shortest runtime check that reaches contact is the 27-frame `agipc_core_fig15_16k_stable_mapping27` run. Its 114 mapping attempts comprise 78 globally resolved maps and 36 stable cross-group partitions, with no mapping-stage fallback. It adopted 88 candidates and typed all 26 remaining fallbacks as `post_residual_not_reduced`. Reported simulation time was `8.053 s`, but this unpaired run validates control flow and numerical stability only; it is not a replacement speed measurement. The next performance work should target post-correction quality before repeating the full paired benchmark.
 
 Raising the fine post-PCG cap from 10 to 20 is a rejected ablation. On the same 27-frame setup it reduced total fallbacks from 26 to 10, but candidate-path changes increased attempts from 114 to 186, applied Newton steps from 87 to 159, and simulation time from `8.053 s` to `11.518 s`. Eight of the remaining failures moved to `coarse_invalid_preconditioned_residual`, while two remained `post_residual_not_reduced`. More candidate adoptions therefore did not produce better nonlinear progress; the default remains 10, and the next investigation must use direction quality and Newton work rather than adoption rate alone.
+
+## Matched paper-current stopping ablation
+
+The earlier timing pairs used different nonlinear termination semantics. A focused 27-frame ablation now forces the original StiffGIPC fine solver to use the same newly solved direction and paper tolerance as AGIPC-Core. The AGIPC row is the direction-quality diagnostic run; both rows reach the first large contact frame and are single measurements.
+
+| Metric | AGIPC-Core | StiffGIPC, paper-current |
+|---|---:|---:|
+| Simulation time | 8.879 s | 11.648 s |
+| Applied Newton updates | 94 | 177 |
+| Frame-27 applied updates | 67 | 101 |
+| Linear iterations | 8,689 | 7,179 |
+| Full-alpha updates | 89 / 94 | 172 / 177 |
+| Energy / intersection backtracks | 0 / 0 | 0 / 0 |
+| Terminal direction / tolerance, frame 27 | 0.973890 | 0.996033 |
+| Finite / ground penetration | yes / 0 | yes / 0 |
+
+The matched gate changes the interpretation of the earlier Newton totals. Long late-contact convergence is not specific to the adaptive direction: the baseline itself needs 101 frame-27 updates under the strict paper gate, versus 67 for AGIPC in this pair. Line search accepts almost every update at full alpha for both solvers, so rejection is not the source of the tail.
+
+The remaining performance problem is per-update cost. AGIPC averages `94.46 ms` per applied update (`8.879 s / 94`), while the fine baseline averages `65.81 ms` (`11.648 s / 177`), making the current AGIPC update about `1.44x` as expensive. AGIPC finishes this single run sooner only because it takes 83 fewer updates. Candidate quality and nonlinear work must therefore be reported separately from coarse-system overhead; a speedup claim still requires repeated interleaved trials and exact paper assets.

@@ -22,6 +22,7 @@ struct RuntimeOptions
     std::string framework      = "abd-cemas-srbk";
     std::string preconditioner = "cemas16";
     std::string body_mode      = "hybrid-abd";
+    std::string newton_stop    = "solver-default";
     SpmvMode    spmv        = SpmvMode::SRBK;
     int         frames      = 0;
     int         figure12_bunny_count = 2;

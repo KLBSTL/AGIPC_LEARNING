@@ -30,6 +30,7 @@ std::string runtime_options_help()
            "  --preconditioner block-diagonal|gpu-mas|cemas16|cemas32\n"
            "  --spmv legacy|srbk|hybrid8|hybrid16\n"
            "  --body-mode fem|hybrid-abd\n"
+           "  --newton-stop solver-default|paper-current\n"
            "  --figure12-bunny-count 1|2\n"
            "  --figure12-collision-buffer-scale <VALUE>\n"
            "  --figure12-linear-system-buffer-scale <VALUE>\n"
@@ -133,6 +134,8 @@ ParseResult parse_runtime_options(int argc, char** argv)
                 options.body_mode       = require_value(i, argument);
                 body_mode_was_explicit = true;
             }
+            else if(argument == "--newton-stop")
+                options.newton_stop = require_value(i, argument);
             else if(argument == "--spmv-self-test")
                 options.spmv_self_test = true;
             else if(argument == "--mas32-self-test")
@@ -301,6 +304,8 @@ ParseResult parse_runtime_options(int argc, char** argv)
         return invalid(options, "Young modulus, dt, and AGIPC threshold must be positive");
     if(options.agipc_mapping != "matching" && options.agipc_mapping != "warp-hash")
         return invalid(options, "AGIPC mapping must be matching or warp-hash");
+    if(options.newton_stop != "solver-default" && options.newton_stop != "paper-current")
+        return invalid(options, "Newton stop must be solver-default or paper-current");
     if(options.agipc_max_levels < 1 || options.agipc_max_levels > 16)
         return invalid(options, "AGIPC max levels must be in 1..16");
     if(options.agipc_fine_correction_iterations < 0)

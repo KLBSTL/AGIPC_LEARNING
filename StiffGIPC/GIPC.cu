@@ -12,11 +12,17 @@
 namespace
 {
 bool g_merged_timing_breakdown_enabled = true;
+bool g_force_paper_current_newton_stop = false;
 }
 
 void set_gipc_merged_timing_breakdown_enabled(bool enabled)
 {
     g_merged_timing_breakdown_enabled = enabled;
+}
+
+void GIPC::set_paper_current_newton_stop(bool enabled)
+{
+    g_force_paper_current_newton_stop = enabled;
 }
 #include <gipc/gipc.h>
 #include "cuda_tools/cuda_tools.h"
@@ -10826,6 +10832,17 @@ bool GIPC::lineSearch(device_TetraData& TetMesh, double& alpha, const double& cf
         }
     }
 
+    auto& line_search = gipc::Statistics::instance()
+                            .at_current_frame()["newton"].back()["line_search"];
+    line_search["input_alpha"] = alpha_SL;
+    line_search["cfl_alpha"] = cfl_alpha;
+    line_search["accepted_alpha"] = alpha;
+    line_search["energy_backtracks"] = numOfLineSearch;
+    line_search["intersection_backtracks"] = numOfIntersect;
+    line_search["initial_energy"] = lastEnergyVal;
+    line_search["tested_energy"] = testingE;
+    line_search["tested_energy_nonincreasing"] = testingE <= lastEnergyVal;
+
     return stopped;
 }
 
@@ -10945,16 +10962,20 @@ int              GIPC::solve_subIP(device_TetraData& TetMesh,
         //                        * IPC_dt * IPC_dt);
 
         const bool adaptive_solver=agipc::galerkin_adoption_enabled();
-        if(!adaptive_solver && k && gradVanish)
+        const bool paper_current_stop=adaptive_solver || g_force_paper_current_newton_stop;
+        if(!paper_current_stop && k && gradVanish)
         {
             break;
         }
         cudaEventRecord(end0);
 
         auto cg_count = calculateMovingDirection(TetMesh, h_cpNum[0], pcg_data.P_type);
+        const auto galerkin_step = agipc::galerkin_summary();
+        if(!galerkin_step.is_null())
+            stats_at_current_frame["newton"].back()["agipc_galerkin"] = galerkin_step;
         if(frozen_linear_diagnostics_complete())
             return k + 1;
-        if(adaptive_solver)
+        if(paper_current_stop)
         {
             constexpr double agipc_newton_relative_tolerance=1e-3;
             const double current_direction_norm=
@@ -10962,10 +10983,15 @@ int              GIPC::solve_subIP(device_TetraData& TetMesh,
             const double direction_tolerance=
                 sqrt(agipc_newton_relative_tolerance*agipc_newton_relative_tolerance
                      *bboxDiagSize2*IPC_dt*IPC_dt);
-            stats_at_current_frame["newton"].back()["agipc_current_direction_norm"]=
-                current_direction_norm;
-            stats_at_current_frame["newton"].back()["agipc_direction_tolerance"]=
-                direction_tolerance;
+            auto& newton_stats=stats_at_current_frame["newton"].back();
+            newton_stats["newton_stop_mode"]="paper_current_direction";
+            newton_stats["current_direction_norm"]=current_direction_norm;
+            newton_stats["direction_tolerance"]=direction_tolerance;
+            if(adaptive_solver)
+            {
+                newton_stats["agipc_current_direction_norm"]=current_direction_norm;
+                newton_stats["agipc_direction_tolerance"]=direction_tolerance;
+            }
             if(k && current_direction_norm<direction_tolerance)
                 break;
         }
@@ -11006,6 +11032,11 @@ int              GIPC::solve_subIP(device_TetraData& TetMesh,
                 alpha = std::max(alpha, alpha_CFL);
             }
         }
+
+        auto& line_search_stats = stats_at_current_frame["newton"].back()["line_search"];
+        line_search_stats["feasible_alpha"] = temp_alpha;
+        line_search_stats["ccd_candidate_pairs"] = h_ccd_cpNum;
+        line_search_stats["ccd_limited_alpha"] = alpha;
 
         cudaEventRecord(end2);
         //printf("alpha:  %f\n", alpha);

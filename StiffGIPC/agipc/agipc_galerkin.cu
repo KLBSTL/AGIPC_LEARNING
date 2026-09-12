@@ -49,6 +49,10 @@ struct GalerkinState
     gipc::Json last=nullptr;
     std::size_t updates=0;
     double total_ms=0;
+    double total_assembly_ms=0;
+    double total_coarse_solve_ms=0;
+    double total_post_correction_ms=0;
+    gipc::Json total_linear_timing=gipc::Json::object();
 };
 
 GalerkinState state;
@@ -501,8 +505,10 @@ gipc::Json assemble_shadow(GalerkinState& target,
     }
     const int coarse_blocks=prefix_blocks+mapping.coarse_block_nodes;
 
-    cudaEvent_t start=nullptr,end=nullptr;
+    cudaEvent_t start=nullptr,assembly_end=nullptr,coarse_end=nullptr,end=nullptr;
     CUDA_SAFE_CALL(cudaEventCreate(&start));
+    CUDA_SAFE_CALL(cudaEventCreate(&assembly_end));
+    CUDA_SAFE_CALL(cudaEventCreate(&coarse_end));
     CUDA_SAFE_CALL(cudaEventCreate(&end));
     CUDA_SAFE_CALL(cudaEventRecord(start));
     if(!target.coarse_matrix)
@@ -549,9 +555,11 @@ gipc::Json assemble_shadow(GalerkinState& target,
     target.invalid_entries.copy_to_host(invalid);
     if(invalid[0]!=0)
         throw std::runtime_error("Gate C encountered invalid matrix or right-hand-side entries");
-    const auto coarse_solve=solve_coarse_shadow(target,fine_matrix,fine_rhs,
+    CUDA_SAFE_CALL(cudaEventRecord(assembly_end));
+    auto coarse_solve=solve_coarse_shadow(target,fine_matrix,fine_rhs,
         static_cast<int>(fine_rhs_dofs),mapping,prefix_blocks);
-    const auto post_correction=coarse_solve["converged"].get<bool>()
+    CUDA_SAFE_CALL(cudaEventRecord(coarse_end));
+    auto post_correction=coarse_solve["converged"].get<bool>()
         ? post_correct_shadow(target,fine_matrix,fine_rhs,static_cast<int>(fine_rhs_dofs))
         : gipc::Json{{"attempted",false},{"stop_reason","coarse_solve_failed"},
                      {"controls_solver",false}};
@@ -581,13 +589,23 @@ gipc::Json assemble_shadow(GalerkinState& target,
         +post_correction.value("iterations",0);
     CUDA_SAFE_CALL(cudaEventRecord(end));
     CUDA_SAFE_CALL(cudaEventSynchronize(end));
-    float elapsed=0;
+    float elapsed=0,assembly_elapsed=0,coarse_elapsed=0,post_elapsed=0;
     CUDA_SAFE_CALL(cudaEventElapsedTime(&elapsed,start,end));
+    CUDA_SAFE_CALL(cudaEventElapsedTime(&assembly_elapsed,start,assembly_end));
+    CUDA_SAFE_CALL(cudaEventElapsedTime(&coarse_elapsed,assembly_end,coarse_end));
+    CUDA_SAFE_CALL(cudaEventElapsedTime(&post_elapsed,coarse_end,end));
     CUDA_SAFE_CALL(cudaEventDestroy(start));
+    CUDA_SAFE_CALL(cudaEventDestroy(assembly_end));
+    CUDA_SAFE_CALL(cudaEventDestroy(coarse_end));
     CUDA_SAFE_CALL(cudaEventDestroy(end));
+    coarse_solve["solve_ms"]=coarse_elapsed;
+    post_correction["solve_ms"]=post_elapsed;
     target.invalid_entries.copy_to_host(invalid);
     ++target.updates;
     target.total_ms+=elapsed;
+    target.total_assembly_ms+=assembly_elapsed;
+    target.total_coarse_solve_ms+=coarse_elapsed;
+    target.total_post_correction_ms+=post_elapsed;
     target.last={{"stage","galerkin_mixed_shadow"},{"formula","Ac=PT*A*P; bc=PT*b"},
                  {"fine_block_nodes",fine_blocks},{"prefix_identity_blocks",prefix_blocks},
                  {"fine_fem_nodes",mapping.fine_nodes},{"coarse_fem_nodes",mapping.coarse_nodes},
@@ -597,6 +615,8 @@ gipc::Json assemble_shadow(GalerkinState& target,
                  {"expanded_blocks_before_reduction",expanded},
                  {"coarse_unique_blocks",coarse.h_unique_key_number},
                  {"invalid_entries",invalid[0]},{"shadow_pipeline_ms",elapsed},
+                 {"stage_timing_ms",{{"assembly",assembly_elapsed},
+                     {"coarse_solve",coarse_elapsed},{"post_correction",post_elapsed}}},
                  {"coarse_solve",coarse_solve},{"post_correction",post_correction},
                  {"controls_solver",false}};
     return target.last;
@@ -656,12 +676,29 @@ gipc::Json adopt_galerkin_candidate(double* destination, std::size_t destination
     return adopt_candidate(state,destination,destination_dofs);
 }
 
+void record_linear_solve_timing(gipc::Json timing)
+{
+    if(state.last.is_null()) return;
+    state.last["linear_system_timing_ms"]=timing;
+    for(const char* key: {"fine_assembly","adaptive_pipeline","fine_preconditioner",
+                          "candidate_decision","fallback_fine_solve","distribute",
+                          "build_total","solve_total"})
+    {
+        const double value=timing.value(key,0.0);
+        state.total_linear_timing[key]=state.total_linear_timing.value(key,0.0)+value;
+    }
+}
+
 gipc::Json galerkin_summary()
 {
     if(state.last.is_null()) return nullptr;
     auto result=state.last;
     result["updates"]=state.updates;
     result["total_shadow_pipeline_ms"]=state.total_ms;
+    result["total_stage_timing_ms"]={{"assembly",state.total_assembly_ms},
+        {"coarse_solve",state.total_coarse_solve_ms},
+        {"post_correction",state.total_post_correction_ms}};
+    result["total_linear_system_timing_ms"]=state.total_linear_timing;
     result["adoption_enabled"]=state.adoption_enabled;
     result["adoption_attempts"]=state.adoption_attempts;
     result["adoptions"]=state.adoptions;

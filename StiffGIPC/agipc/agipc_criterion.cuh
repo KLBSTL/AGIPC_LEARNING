@@ -35,6 +35,7 @@ gipc::Json update_galerkin_shadow(const GIPCTripletMatrix& fine_matrix,
                                   const double* fine_rhs,
                                   std::size_t fine_rhs_dofs);
 gipc::Json adopt_galerkin_candidate(double* destination, std::size_t destination_dofs);
+void record_linear_solve_timing(gipc::Json timing);
 gipc::Json criterion_summary();
 gipc::Json galerkin_summary();
 gipc::Json criterion_self_test();

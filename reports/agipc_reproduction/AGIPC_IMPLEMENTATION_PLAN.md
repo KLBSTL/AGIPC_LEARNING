@@ -116,7 +116,7 @@ Test rest tet `(0,0,0),(1,0,0),(0,1,0),(0,0,1)`; triangle uses first three point
 - [x] Add experimental `--solver agipc-core` dispatch after A–D/E pass. Capture attempted/adopted/fallback counters plus aggregate typed reasons, and retain the original solver as the guarded fallback.
 - [x] Apply the current-direction Newton criterion with dt factor after the AGIPC-Core solve; retain the baseline's previous-direction behavior as frozen provenance and record the current norm and threshold per Newton step.
 - [x] Add a baseline-only `--newton-stop paper-current` ablation and per-Newton Galerkin/CCD/line-search diagnostics. On the 27-frame 16K contact gate, the matched fine baseline needed 177 applied updates versus AGIPC's 94; neither route performed energy or intersection backtracks.
-- [ ] Strict diagnostics compute full gradient RMS and full-space displacement; separate diagnostic timing.
+- [ ] Strict diagnostics compute full gradient RMS and full-space displacement. Per-stage CUDA timing is implemented and has isolated coarse-PCG and unused fine-preconditioner costs; low-perturbation benchmark timing remains open.
 
 ## Task F: fine contact preservation
 
@@ -129,7 +129,7 @@ Test rest tet `(0,0,0),(1,0,0),(0,1,0),(0,0,1)`; triangle uses first three point
 
 ## Task H: metrics and paper pipeline
 
-- [ ] Extend JSON with all fields from task brief §16, keep old fields, FEM and whole-system DoF distinct. Contact counts, FEM/ABD terminal summaries and optional final-state CSV are present; stage timing and the remaining paper fields are still required.
+- [ ] Extend JSON with all fields from task brief §16, keep old fields, FEM and whole-system DoF distinct. Contact counts, FEM/ABD terminal summaries, optional final-state CSV, and stage timing are present; the remaining paper fields are still required.
 - [ ] Add persistent CUDA events and NVTX labels; remove only adaptive-path allocations/sync after correctness evidence.
 - [ ] Implement independent symmetric fine FEM/contact/friction assembly; compare complete matrices before allowing `agipc-symhessian`.
 - [ ] Implement `--collision-traversal stack|stackless`; compare sorted candidate and contact sets on equal states before enabling `agipc-paper`.
@@ -142,7 +142,7 @@ Test rest tet `(0,0,0),(1,0,0),(0,1,0),(0,0,1)`; triangle uses first three point
 - [ ] Fig14: same dragon E=3e5, dt=.005/.01/.02/.04, physical duration1.5s, document fractional-frame policy. Lower dt should yield lower active ratios.
 - [x] Fig15 reduced preflight: 289-node cloth on a fixed ABD sphere at E=1e6, dt=.01; active ratio `0.02389`, direct final-state error recorded, negative single-pair runtime retained.
 - [x] Fig15 capacity preflight: existing 16,641-node cloth on the fixed ABD sphere at E=1e6, dt=.01; both CEMAS16 routes pass one no-contact frame at 49,935 fine DoF, with 21 final AGIPC coarse DoF. This is not an exact paper asset.
-- [x] Fig15 larger contact gate: both routes pass 35 frames with finite states and zero penetration; paired RMS terminal error is `0.01995` (`3.44%` of baseline displacement). The original AGIPC run is `2.98x` slower. A focused 27-frame rerun validates stable partitions, and a matched paper-current baseline shows that strict termination itself creates a 101-update contact-frame tail. Current AGIPC cost per applied update remains about `1.44x` the fine baseline, so stage overhead and candidate quality are the next optimization targets.
+- [x] Fig15 larger contact gate: both routes pass 35 frames with finite states and zero penetration; paired RMS terminal error is `0.01995` (`3.44%` of baseline displacement). The original AGIPC run is `2.98x` slower. A focused 27-frame rerun validates stable partitions, and a matched paper-current baseline shows that strict termination itself creates a 101-update contact-frame tail. Stage timing identifies coarse PCG as the largest adaptive cost and finds `331.314 ms` of unused fine-preconditioner work on accepted candidates; that assembly is now deferred to fallback.
 - [ ] Fig15 exact assets: cloth on ABD sphere E=1e6, dt=.01, 10K/51K/92K first; only larger runs after measured capacity headroom.
 - [ ] Warm up and interleave S/A/A/S until each method has >=3 measured trials. Hash every executable/mesh; store immutable JSON in perf_history and CSV/JSON summaries.
 - [ ] Complete AGIPC_IMPLEMENTATION_MAPPING.md, AGIPC_NUMERICAL_VALIDATION.md, AGIPC_PERFORMANCE_ANALYSIS.md, AGIPC_FAILURES_AND_FIXES.md and AGIPC_PAPER_COMPARISON.md with actual results. Separate numerical/trend/quantitative levels; retain negative results.

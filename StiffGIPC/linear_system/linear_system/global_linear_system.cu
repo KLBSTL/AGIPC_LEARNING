@@ -14,6 +14,15 @@
 
 namespace
 {
+struct BuildStageTiming
+{
+    double fine_assembly_ms=0;
+    double adaptive_pipeline_ms=0;
+    double total_ms=0;
+};
+
+thread_local BuildStageTiming last_build_timing;
+
 template <typename T>
 void write_binary(const std::filesystem::path& path, const std::vector<T>& values)
 {
@@ -27,6 +36,7 @@ namespace gipc
 {
 bool GlobalLinearSystem::build_linear_system()
 {
+    last_build_timing={};
     auto hessian_provider_count  = m_subsystems.size();
     auto gradient_provider_count = m_inner_subsystems.size();
 
@@ -65,6 +75,17 @@ bool GlobalLinearSystem::build_linear_system()
         return false;
     }
 
+    const bool measure_stages=agipc::galerkin_adoption_enabled();
+    cudaEvent_t build_start=nullptr,fine_end=nullptr,adaptive_end=nullptr,build_end=nullptr;
+    if(measure_stages)
+    {
+        CUDA_SAFE_CALL(cudaEventCreate(&build_start));
+        CUDA_SAFE_CALL(cudaEventCreate(&fine_end));
+        CUDA_SAFE_CALL(cudaEventCreate(&adaptive_end));
+        CUDA_SAFE_CALL(cudaEventCreate(&build_end));
+        CUDA_SAFE_CALL(cudaEventRecord(build_start));
+    }
+
 
     m_b.resize(total_rhs_count);
     m_x.resize(total_rhs_count);
@@ -82,17 +103,43 @@ bool GlobalLinearSystem::build_linear_system()
     }
     convert_new();
 
+    if(measure_stages) CUDA_SAFE_CALL(cudaEventRecord(fine_end));
+
     // Assemble the adaptive candidate after the fine matrix has been reduced to unique BCOO.
     agipc::update_galerkin_shadow(*gipc_global_triplet,
                                   m_b.buffer_view().data(),
                                   total_rhs_count);
 
-    if(m_global_preconditioner)
-        m_global_preconditioner->do_assemble(*gipc_global_triplet);
+    if(measure_stages) CUDA_SAFE_CALL(cudaEventRecord(adaptive_end));
 
-    for(int i = start_preconditioner_id; i < m_local_preconditioners.size(); i++)
+    // An accepted Galerkin candidate does not use the fine preconditioners.
+    // Defer them on the adoption path and assemble them in solve_linear_system
+    // only when the candidate falls back to the original fine solver.
+    const bool frozen_diagnostics_pending=
+        !m_frozen_linear_diagnostics_path.empty()
+        && !m_frozen_linear_diagnostics_complete;
+    if(!measure_stages || frozen_diagnostics_pending)
     {
-        m_local_preconditioners[i]->assemble();
+        if(m_global_preconditioner)
+            m_global_preconditioner->do_assemble(*gipc_global_triplet);
+
+        for(int i=start_preconditioner_id;i<m_local_preconditioners.size();i++)
+            m_local_preconditioners[i]->assemble();
+    }
+
+    if(measure_stages)
+    {
+        CUDA_SAFE_CALL(cudaEventRecord(build_end));
+        CUDA_SAFE_CALL(cudaEventSynchronize(build_end));
+        float fine_ms=0,adaptive_ms=0,total_ms=0;
+        CUDA_SAFE_CALL(cudaEventElapsedTime(&fine_ms,build_start,fine_end));
+        CUDA_SAFE_CALL(cudaEventElapsedTime(&adaptive_ms,fine_end,adaptive_end));
+        CUDA_SAFE_CALL(cudaEventElapsedTime(&total_ms,build_start,build_end));
+        last_build_timing={fine_ms,adaptive_ms,total_ms};
+        CUDA_SAFE_CALL(cudaEventDestroy(build_start));
+        CUDA_SAFE_CALL(cudaEventDestroy(fine_end));
+        CUDA_SAFE_CALL(cudaEventDestroy(adaptive_end));
+        CUDA_SAFE_CALL(cudaEventDestroy(build_end));
     }
 
     return true;
@@ -160,14 +207,64 @@ gipc::SizeT GlobalLinearSystem::solve_linear_system()
         m_x.buffer_view().fill(0);
         return 0;
     }
-    const auto adoption=agipc::adopt_galerkin_candidate(m_x.data(),m_x.size());
-    if(adoption.value("adopted",false))
+    const bool measure_stages=agipc::galerkin_adoption_enabled();
+    cudaEvent_t decision_start=nullptr,decision_end=nullptr,preconditioner_end=nullptr,
+                solver_end=nullptr,distribute_end=nullptr;
+    if(measure_stages)
     {
-        distribute_solution();
-        return adoption.value("iterations",0);
+        CUDA_SAFE_CALL(cudaEventCreate(&decision_start));
+        CUDA_SAFE_CALL(cudaEventCreate(&decision_end));
+        CUDA_SAFE_CALL(cudaEventCreate(&preconditioner_end));
+        CUDA_SAFE_CALL(cudaEventCreate(&solver_end));
+        CUDA_SAFE_CALL(cudaEventCreate(&distribute_end));
+        CUDA_SAFE_CALL(cudaEventRecord(decision_start));
     }
-    auto iter = m_solver->solve(m_x, m_b);
+    const auto adoption=agipc::adopt_galerkin_candidate(m_x.data(),m_x.size());
+    const bool adopted=adoption.value("adopted",false);
+    if(measure_stages) CUDA_SAFE_CALL(cudaEventRecord(decision_end));
+
+    if(measure_stages && !adopted)
+    {
+        if(m_global_preconditioner)
+            m_global_preconditioner->do_assemble(*gipc_global_triplet);
+
+        int start_preconditioner_id=0;
+        if(m_local_preconditioners.size()
+           && m_local_preconditioners[0]->preconditioner_id==0)
+            start_preconditioner_id=1;
+        for(int i=start_preconditioner_id;i<m_local_preconditioners.size();i++)
+            m_local_preconditioners[i]->assemble();
+    }
+    if(measure_stages) CUDA_SAFE_CALL(cudaEventRecord(preconditioner_end));
+
+    auto iter=adopted ? adoption.value("iterations",0) : m_solver->solve(m_x,m_b);
+    if(measure_stages) CUDA_SAFE_CALL(cudaEventRecord(solver_end));
     distribute_solution();
+    if(measure_stages)
+    {
+        CUDA_SAFE_CALL(cudaEventRecord(distribute_end));
+        CUDA_SAFE_CALL(cudaEventSynchronize(distribute_end));
+        float decision_ms=0,preconditioner_ms=0,solver_ms=0,distribute_ms=0,solve_ms=0;
+        CUDA_SAFE_CALL(cudaEventElapsedTime(&decision_ms,decision_start,decision_end));
+        CUDA_SAFE_CALL(cudaEventElapsedTime(&preconditioner_ms,decision_end,preconditioner_end));
+        CUDA_SAFE_CALL(cudaEventElapsedTime(&solver_ms,preconditioner_end,solver_end));
+        CUDA_SAFE_CALL(cudaEventElapsedTime(&distribute_ms,solver_end,distribute_end));
+        CUDA_SAFE_CALL(cudaEventElapsedTime(&solve_ms,decision_start,distribute_end));
+        agipc::record_linear_solve_timing({
+            {"fine_assembly",last_build_timing.fine_assembly_ms},
+            {"adaptive_pipeline",last_build_timing.adaptive_pipeline_ms},
+            {"fine_preconditioner",preconditioner_ms},
+            {"candidate_decision",decision_ms},
+            {"fallback_fine_solve",adopted?0.0:static_cast<double>(solver_ms)},
+            {"distribute",distribute_ms},{"build_total",last_build_timing.total_ms},
+            {"solve_total",last_build_timing.total_ms+solve_ms},
+            {"used_galerkin_candidate",adopted},{"fine_solver_iterations",adopted?0:iter}});
+        CUDA_SAFE_CALL(cudaEventDestroy(decision_start));
+        CUDA_SAFE_CALL(cudaEventDestroy(decision_end));
+        CUDA_SAFE_CALL(cudaEventDestroy(preconditioner_end));
+        CUDA_SAFE_CALL(cudaEventDestroy(solver_end));
+        CUDA_SAFE_CALL(cudaEventDestroy(distribute_end));
+    }
     return iter;
 }
 

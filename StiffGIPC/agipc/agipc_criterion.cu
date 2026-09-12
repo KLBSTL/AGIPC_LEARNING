@@ -55,6 +55,7 @@ struct Workspace
     cudatool::CudaDeviceBuffer<int> remaining_edges;
     cudaEvent_t start = nullptr, end = nullptr;
     size_t updates = 0, protected_sum = 0, collapsible_sum = 0;
+    double mapping_total_ms = 0;
     double increment_min = std::numeric_limits<double>::infinity();
     double increment_max = 0, increment_sum = 0;
     size_t increment_samples = 0;
@@ -449,6 +450,7 @@ void initialize_criterion(const tetrahedra_obj& mesh, double threshold, int max_
     if(!w.start) { CUDA_SAFE_CALL(cudaEventCreate(&w.start)); CUDA_SAFE_CALL(cudaEventCreate(&w.end)); }
     w.enabled = true;
     w.updates = w.protected_sum = w.collapsible_sum = w.increment_samples = 0;
+    w.mapping_total_ms = 0;
     w.increment_min = std::numeric_limits<double>::infinity();
     w.increment_max = w.increment_sum = 0;
     w.last_mapping = nullptr;
@@ -458,7 +460,14 @@ void initialize_criterion(const tetrahedra_obj& mesh, double threshold, int max_
 gipc::Json update_mapping()
 {
     if(!workspace.enabled) return nullptr;
+    CUDA_SAFE_CALL(cudaEventRecord(workspace.start));
     workspace.last_mapping=build_mapping(workspace);
+    CUDA_SAFE_CALL(cudaEventRecord(workspace.end));
+    CUDA_SAFE_CALL(cudaEventSynchronize(workspace.end));
+    float elapsed=0;
+    CUDA_SAFE_CALL(cudaEventElapsedTime(&elapsed,workspace.start,workspace.end));
+    workspace.last_mapping["mapping_ms"]=elapsed;
+    workspace.mapping_total_ms+=elapsed;
     workspace.mapping_complete=workspace.last_mapping.value("complete",false);
     return workspace.last_mapping;
 }
@@ -535,6 +544,7 @@ gipc::Json criterion_summary()
             {"green_increment_min",w.increment_samples?w.increment_min:0.0},
             {"green_increment_mean",w.increment_samples?w.increment_sum/w.increment_samples:0.0},
             {"green_increment_max",w.increment_max},{"threshold",w.threshold},
+            {"total_mapping_ms",w.mapping_total_ms},
             {"history_convention","reset_at_subIP_initial_positions"}};
     if(!w.last_mapping.is_null()) result["latest_mapping"]=w.last_mapping;
     const auto galerkin=galerkin_summary();

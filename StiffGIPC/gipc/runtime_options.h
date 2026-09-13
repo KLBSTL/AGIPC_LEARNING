@@ -37,6 +37,7 @@ struct RuntimeOptions
     std::string agipc_mapping   = "warp-hash";
     int         agipc_max_levels = 16;
     int         agipc_fine_correction_iterations = 10;
+    std::string agipc_coarse_preconditioner = "block-jacobi";
     bool        agipc_diagnostics = false;
     bool        agipc_self_test   = false;
     bool        spmv_self_test    = false;

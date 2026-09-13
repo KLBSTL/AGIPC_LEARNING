@@ -48,6 +48,7 @@ std::string runtime_options_help()
            "  --agipc-mapping matching|warp-hash\n"
            "  --agipc-max-levels <N>\n"
            "  --agipc-fine-correction-iterations <N>\n"
+           "  --agipc-coarse-preconditioner block-jacobi|mas32 (experimental)\n"
            "  --agipc-diagnostics\n"
            "  --agipc-self-test (criterion GPU gate)\n"
            "  --agipc-post-cg-max <N> (alias; zero allowed for ablation)\n"
@@ -177,6 +178,8 @@ ParseResult parse_runtime_options(int argc, char** argv)
                 options.agipc_mapping = require_value(i, argument);
             else if(argument == "--agipc-max-levels")
                 options.agipc_max_levels = std::stoi(require_value(i, argument));
+            else if(argument == "--agipc-coarse-preconditioner")
+                options.agipc_coarse_preconditioner = require_value(i, argument);
             else if(argument == "--agipc-fine-correction-iterations" || argument == "--agipc-post-cg-max")
                 options.agipc_fine_correction_iterations =
                     std::stoi(require_value(i, argument));
@@ -201,6 +204,11 @@ ParseResult parse_runtime_options(int argc, char** argv)
                        "paper-fig12-coupling-scaled, or paper-fig15-cloth-abd-scaled");
     const bool paper_mixed_scene = options.scene == "paper-fig12-coupling-scaled"
                                    || options.scene == "paper-fig15-cloth-abd-scaled";
+    if(options.agipc_coarse_preconditioner != "block-jacobi"
+       && options.agipc_coarse_preconditioner != "mas32")
+        return invalid(options, "agipc-coarse-preconditioner must be block-jacobi or mas32");
+    if(options.agipc_coarse_preconditioner == "mas32" && options.solver == SolverMode::StiffGIPC)
+        return invalid(options, "experimental coarse mas32 requires --solver agipc-core");
     if(options.scene == "paper-fig15-cloth-abd-scaled" && !young_modulus_was_explicit)
         options.young_modulus = 1e6;
     if(!options.cloth_mesh.empty()

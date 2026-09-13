@@ -1635,7 +1635,8 @@ void initScene()
         agipc::configure_galerkin(runtime_options.agipc_fine_correction_iterations,
                                   agipc_core_enabled,
                                   std::move(fallback_diagnostics_directory),
-                                  std::move(coarse_diagnostics_directory));
+                                  std::move(coarse_diagnostics_directory),
+                                  runtime_options.agipc_coarse_preconditioner == "mas32");
         agipc::initialize_criterion(tetMesh,runtime_options.agipc_threshold,
                                     runtime_options.agipc_max_levels);
     }
@@ -1939,6 +1940,7 @@ int run_headless()
     metrics["cloth_mesh"]       = runtime_options.cloth_mesh;
     metrics["framework"]        = runtime_options.framework;
     metrics["preconditioner"]   = runtime_options.preconditioner;
+    metrics["agipc_coarse_preconditioner"] = runtime_options.agipc_coarse_preconditioner;
     metrics["spmv"]             = gipc::to_string(runtime_options.spmv);
     const bool paper_mixed_scene = runtime_options.scene == "paper-fig12-coupling-scaled"
                                    || runtime_options.scene == "paper-fig15-cloth-abd-scaled";

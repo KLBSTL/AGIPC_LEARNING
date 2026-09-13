@@ -4,6 +4,7 @@
 #include <linear_system/linear_system/global_matrix.h>
 #include <linear_system/utils/converter.h>
 #include <linear_system/utils/spmv.h>
+#include <TraditionalMAS32Preconditioner.cuh>
 
 #include <Eigen/Dense>
 #include <algorithm>
@@ -14,6 +15,7 @@
 #include <fstream>
 #include <limits>
 #include <memory>
+#include <numeric>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -44,6 +46,9 @@ struct GalerkinState
     cudatool::CudaDeviceBuffer<Eigen::Matrix3d> fine_inverse_diagonal;
     cudatool::CudaDeviceBuffer<int> fine_diagonal_found,fine_invalid_entries;
     int post_max_iterations=10;
+    bool use_coarse_mas32=false;
+    std::size_t mas_attempts=0,mas_local_failures=0;
+    double total_mas_setup_ms=0,total_mas_validation_ms=0;
     bool adoption_enabled=false;
     bool candidate_ready=false;
     std::string candidate_failure_reason="not_assembled";
@@ -70,6 +75,81 @@ struct GalerkinState
 };
 
 GalerkinState state;
+
+__global__ void append_mas_padding(Eigen::Matrix3d* values,int* rows,int* cols,
+                                   int unique,int blocks,int padding)
+{
+    const int i=blockIdx.x*blockDim.x+threadIdx.x;
+    if(i<padding)
+    { values[unique+i].setIdentity(); rows[unique+i]=blocks+i; cols[unique+i]=blocks+i; }
+}
+
+// Explicit intermediate runtime adapter. Original Galerkin dimensions and PCG
+// vectors stay unchanged; only MAS storage has isolated identity padding.
+struct RuntimeCoarseMas
+{
+    gpu_mas32::TraditionalMAS32Preconditioner value;
+    bool allocated=false;
+    int blocks=0,padded=0;
+    cudatool::CudaDeviceBuffer<Eigen::Matrix3d> values;
+    cudatool::CudaDeviceBuffer<int> rows,cols;
+    cudatool::CudaDeviceBuffer<uint32_t> indices;
+    cudatool::CudaDeviceBuffer<double> residual,z;
+    ~RuntimeCoarseMas() { if(allocated) value.FreeMAS(); }
+    void setup(const GIPCTripletMatrix& matrix)
+    {
+        blocks=matrix.block_rows(); padded=(blocks+31)/32*32;
+        const int unique=matrix.h_unique_key_number,padding=padded-blocks;
+        std::vector<int> host_rows(unique),host_cols(unique),identity(padded);
+        CUDA_SAFE_CALL(cudaMemcpy(host_rows.data(),matrix.block_row_indices(),unique*sizeof(int),cudaMemcpyDeviceToHost));
+        CUDA_SAFE_CALL(cudaMemcpy(host_cols.data(),matrix.block_col_indices(),unique*sizeof(int),cudaMemcpyDeviceToHost));
+        std::vector<std::vector<unsigned int>> graph(padded);
+        for(int i=0;i<unique;++i)
+        {
+            const int row=host_rows[i],col=host_cols[i];
+            if(row<0 || col<0 || row>=blocks || col>=blocks)
+                throw std::runtime_error("Invalid runtime coarse MAS graph index");
+            if(row!=col) { graph[row].push_back(col); graph[col].push_back(row); }
+        }
+        std::vector<unsigned int> neighbors,starts(padded),counts(padded);
+        for(int i=0;i<padded;++i)
+        {
+            auto& adjacent=graph[i];
+            std::sort(adjacent.begin(),adjacent.end());
+            adjacent.erase(std::unique(adjacent.begin(),adjacent.end()),adjacent.end());
+            starts[i]=static_cast<unsigned int>(neighbors.size()); counts[i]=adjacent.size();
+            neighbors.insert(neighbors.end(),adjacent.begin(),adjacent.end());
+        }
+        std::iota(identity.begin(),identity.end(),0);
+        values.resize(unique+padding); rows.resize(unique+padding); cols.resize(unique+padding);
+        CUDA_SAFE_CALL(cudaMemcpy(values.data(),matrix.block_values(),unique*sizeof(Eigen::Matrix3d),cudaMemcpyDeviceToDevice));
+        CUDA_SAFE_CALL(cudaMemcpy(rows.data(),matrix.block_row_indices(),unique*sizeof(int),cudaMemcpyDeviceToDevice));
+        CUDA_SAFE_CALL(cudaMemcpy(cols.data(),matrix.block_col_indices(),unique*sizeof(int),cudaMemcpyDeviceToDevice));
+        if(padding) append_mas_padding<<<1,32>>>(values.data(),rows.data(),cols.data(),unique,blocks,padding);
+        std::vector<uint32_t> host_indices(unique+padding);
+        std::iota(host_indices.begin(),host_indices.end(),uint32_t{0}); indices.copy_from_host(host_indices);
+        residual.resize(3*padded); residual.reset_zero(); z.resize(3*padded);
+        allocated=true;
+        value.initPreconditioner_Neighbor(padded,0,std::max<std::size_t>(1,neighbors.size()),nullptr,padded);
+        value.neighborListSize=static_cast<int>(neighbors.size());
+        if(!neighbors.empty()) CUDA_SAFE_CALL(cudaMemcpy(value.d_neighborListInit,neighbors.data(),neighbors.size()*sizeof(unsigned int),cudaMemcpyHostToDevice));
+        CUDA_SAFE_CALL(cudaMemcpy(value.d_neighborStart,starts.data(),padded*sizeof(unsigned int),cudaMemcpyHostToDevice));
+        CUDA_SAFE_CALL(cudaMemcpy(value.d_neighborNumInit,counts.data(),padded*sizeof(unsigned int),cudaMemcpyHostToDevice));
+        CUDA_SAFE_CALL(cudaMemcpy(value.d_partId_map_real,identity.data(),padded*sizeof(int),cudaMemcpyHostToDevice));
+        CUDA_SAFE_CALL(cudaMemcpy(value.d_real_map_partId,identity.data(),padded*sizeof(int),cudaMemcpyHostToDevice));
+        value.initPreconditioner_Matrix();
+        value.setPreconditioner_bcoo(values.data(),rows.data(),cols.data(),indices.data(),0,unique+padding,0);
+        CUDA_SAFE_CALL(cudaDeviceSynchronize());
+    }
+    void apply(const double* input,double* output)
+    {
+        CUDA_SAFE_CALL(cudaMemcpy(residual.data(),input,3*blocks*sizeof(double),cudaMemcpyDeviceToDevice));
+        value.preconditioning(reinterpret_cast<const double3*>(residual.data()),reinterpret_cast<double3*>(z.data()));
+        CUDA_SAFE_CALL(cudaMemcpy(output,z.data(),3*blocks*sizeof(double),cudaMemcpyDeviceToDevice));
+    }
+    gipc::Json diagnostics() const
+    { return value.numerical_diagnostics(reinterpret_cast<const double3*>(residual.data())); }
+};
 
 __device__ void transform_for_block(int fine_block,int prefix_blocks,
                                     const int* fine_to_coarse,
@@ -344,7 +424,7 @@ gipc::Json freeze_coarse_system(GalerkinState& target)
         {"coarse_block_nodes",blocks},{"coarse_dofs",3*blocks},
         {"coarse_unique_blocks",unique},{"coarse_matrix_half_storage",true},
         {"matrix_block_layout","Eigen column-major FP64 3x3"},
-        {"preconditioner","block_jacobi"},{"coarse_solve",solve},
+        {"preconditioner",solve.value("preconditioner",std::string{"block_jacobi"})},{"coarse_solve",solve},
         {"fine_block_nodes",target.last["fine_block_nodes"]},
         {"coarse_fem_nodes",target.last["coarse_fem_nodes"]},
         {"candidate_ready",target.candidate_ready},
@@ -559,8 +639,43 @@ gipc::Json solve_coarse_shadow(GalerkinState& target,const GIPCTripletMatrix& fi
     if(found!=blocks)
         return {{"attempted",true},{"converged",false},{"failure_reason","missing_or_singular_diagonal"},
                 {"diagonal_blocks_found",found},{"diagonal_blocks_expected",blocks}};
-    apply_diagonal<<<(blocks+kThreads-1)/kThreads,kThreads>>>(target.inverse_diagonal.data(),
-        target.coarse_r.data(),target.coarse_z.data(),blocks);
+    std::unique_ptr<RuntimeCoarseMas> mas;
+    gipc::Json mas_diagnostics=nullptr;
+    double mas_setup_ms=0,mas_validation_ms=0;
+    if(target.use_coarse_mas32)
+    {
+        ++target.mas_attempts;
+        const auto begin=std::chrono::steady_clock::now();
+        try
+        { mas=std::make_unique<RuntimeCoarseMas>(); mas->setup(coarse); }
+        catch(const std::exception& error)
+        {
+            ++target.mas_local_failures;
+            return {{"attempted",true},{"converged",false},{"failure_reason","mas_setup_failed"},
+                    {"preconditioner","mas32"},{"setup_error",error.what()}};
+        }
+        mas_setup_ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-begin).count();
+        target.total_mas_setup_ms+=mas_setup_ms;
+    }
+    const auto apply_preconditioner=[&](const double* input,double* output) {
+        if(mas) mas->apply(input,output);
+        else apply_diagonal<<<(blocks+kThreads-1)/kThreads,kThreads>>>(target.inverse_diagonal.data(),input,output,blocks);
+    };
+    apply_preconditioner(target.coarse_r.data(),target.coarse_z.data());
+    if(mas)
+    {
+        const auto begin=std::chrono::steady_clock::now();
+        mas_diagnostics=mas->diagnostics();
+        mas_validation_ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-begin).count();
+        target.total_mas_validation_ms+=mas_validation_ms;
+        if(!mas_diagnostics.value("passed",false))
+        {
+            ++target.mas_local_failures;
+            return {{"attempted",true},{"converged",false},{"failure_reason","mas_local_diagnostics_failed"},
+                    {"preconditioner","mas32"},{"mas_local_diagnostics",mas_diagnostics},
+                    {"mas_setup_wall_ms",mas_setup_ms},{"mas_validation_wall_ms",mas_validation_ms}};
+        }
+    }
     CUDA_SAFE_CALL(cudaMemcpy(target.coarse_p.data(),target.coarse_z.data(),
                               dofs*sizeof(double),cudaMemcpyDeviceToDevice));
     const double initial2=device_dot(target.coarse_r.data(),target.coarse_r.data(),dofs);
@@ -571,6 +686,8 @@ gipc::Json solve_coarse_shadow(GalerkinState& target,const GIPCTripletMatrix& fi
     const int max_iterations=std::min(512,std::max(1,dofs));
     for(;iterations<max_iterations && residual2>tolerance2;)
     {
+        if(mas && (!std::isfinite(rz) || rz<=0))
+        { failure="invalid_preconditioned_residual"; break; }
         spmv.warp_reduce_sym_spmv(1.0,coarse.block_values(),coarse.block_row_indices(),
             coarse.block_col_indices(),unique,
             cudatool::CDenseVectorView<double>(target.coarse_p.data(),dofs),0.0,
@@ -585,15 +702,28 @@ gipc::Json solve_coarse_shadow(GalerkinState& target,const GIPCTripletMatrix& fi
         residual2=device_dot(target.coarse_r.data(),target.coarse_r.data(),dofs);
         if(!std::isfinite(residual2)) { failure="nonfinite_residual"; break; }
         if(residual2<=tolerance2) break;
-        apply_diagonal<<<(blocks+kThreads-1)/kThreads,kThreads>>>(target.inverse_diagonal.data(),
-            target.coarse_r.data(),target.coarse_z.data(),blocks);
+        apply_preconditioner(target.coarse_r.data(),target.coarse_z.data());
         const double next_rz=device_dot(target.coarse_r.data(),target.coarse_z.data(),dofs);
-        if(!std::isfinite(next_rz) || fabs(rz)<1e-30) { failure="invalid_preconditioned_residual"; break; }
+        if(!std::isfinite(next_rz) || fabs(rz)<1e-30 || (mas && next_rz<=0)) { failure="invalid_preconditioned_residual"; break; }
         update_p<<<(dofs+kThreads-1)/kThreads,kThreads>>>(target.coarse_p.data(),
             target.coarse_z.data(),next_rz/rz,dofs); rz=next_rz;
     }
-    const bool converged=residual2<=tolerance2;
+    const double recursive2=residual2;
+    bool converged=residual2<=tolerance2;
     if(!converged && failure.empty()) failure="iteration_cap";
+    if(mas)
+    {
+        spmv.warp_reduce_sym_spmv(1.0,coarse.block_values(),coarse.block_row_indices(),
+            coarse.block_col_indices(),unique,
+            cudatool::CDenseVectorView<double>(target.coarse_solution.data(),dofs),0.0,
+            cudatool::DenseVectorView<double>(target.coarse_ap.data(),dofs));
+        form_residual<<<(dofs+kThreads-1)/kThreads,kThreads>>>(target.coarse_rhs.data(),
+            target.coarse_ap.data(),target.coarse_r.data(),dofs);
+        residual2=device_dot(target.coarse_r.data(),target.coarse_r.data(),dofs);
+        converged=failure.empty() && std::isfinite(residual2)
+            && residual2<=tolerance2*(1.0+kResidualGrowthTolerance)*(1.0+kResidualGrowthTolerance);
+        if(!converged && failure.empty()) failure="true_residual_not_converged";
+    }
     target.prolonged.resize(fine_dofs);
     prolongate_mixed<<<(fine.block_rows()+kThreads-1)/kThreads,kThreads>>>(
         target.coarse_solution.data(),target.prolonged.data(),mapping.fine_to_coarse,
@@ -612,6 +742,10 @@ gipc::Json solve_coarse_shadow(GalerkinState& target,const GIPCTripletMatrix& fi
     const double fine_final2=device_dot(target.fine_residual.data(),target.fine_residual.data(),fine_dofs);
     const double rhs_dot_direction=device_dot(fine_rhs,target.prolonged.data(),fine_dofs);
     return {{"attempted",true},{"converged",converged},{"failure_reason",failure},
+            {"preconditioner",mas?"mas32":"block_jacobi"},
+            {"mas_local_diagnostics",mas_diagnostics},{"mas_setup_wall_ms",mas_setup_ms},
+            {"mas_validation_wall_ms",mas_validation_ms},{"true_residual_checked",bool(mas)},
+            {"recursive_final_residual_norm",std::sqrt(std::max(0.0,recursive2))},
             {"iterations",iterations},{"max_iterations",max_iterations},
             {"relative_tolerance",1e-3},{"initial_residual_norm",std::sqrt(initial2)},
             {"final_residual_norm",std::sqrt(std::max(0.0,residual2))},
@@ -802,8 +936,12 @@ gipc::Json adopt_candidate(GalerkinState& target,double* destination,
 void configure_galerkin(int fine_correction_max_iterations,
                         bool adoption_enabled,
                         std::string fallback_diagnostics_directory,
-                        std::string coarse_diagnostics_directory)
+                        std::string coarse_diagnostics_directory,
+                        bool use_coarse_mas32)
 {
+    state.use_coarse_mas32=use_coarse_mas32;
+    state.mas_attempts=state.mas_local_failures=0;
+    state.total_mas_setup_ms=state.total_mas_validation_ms=0;
     state.post_max_iterations=std::max(0,fine_correction_max_iterations);
     state.adoption_enabled=adoption_enabled;
     state.fallback_diagnostics_directory=std::move(fallback_diagnostics_directory);
@@ -990,6 +1128,11 @@ gipc::Json galerkin_summary()
     result["total_linear_system_timing_ms"]=state.total_linear_timing;
     result["direction_quality_evaluations"]=state.direction_quality_evaluations;
     result["residual_guard_restores"]=state.residual_guard_restores;
+    result["coarse_preconditioner_requested"]=state.use_coarse_mas32?"mas32":"block_jacobi";
+    result["mas_attempts"]=state.mas_attempts;
+    result["mas_local_failures"]=state.mas_local_failures;
+    result["total_mas_setup_wall_ms"]=state.total_mas_setup_ms;
+    result["total_mas_validation_wall_ms"]=state.total_mas_validation_ms;
     result["frozen_fallback_samples"]=state.frozen_fallback_samples;
     result["frozen_coarse_samples"]=state.frozen_coarse_samples;
     result["adoption_enabled"]=state.adoption_enabled;

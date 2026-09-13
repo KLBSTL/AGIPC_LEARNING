@@ -33,7 +33,8 @@ MappingDeviceView mapping_device_view();
 void configure_galerkin(int fine_correction_max_iterations,
                         bool adoption_enabled,
                         std::string fallback_diagnostics_directory = {},
-                        std::string coarse_diagnostics_directory = {});
+                        std::string coarse_diagnostics_directory = {},
+                        bool use_coarse_mas32 = false);
 bool galerkin_adoption_enabled();
 gipc::Json update_galerkin_shadow(const GIPCTripletMatrix& fine_matrix,
                                   const double* fine_rhs,

@@ -225,6 +225,12 @@ AGIPC 在这一次运行中更快，是因为减少了 83 次 Newton 更新，�
 
 单次设置+PCG 区间为 Jacobi `27.047/21.227 ms`、MAS `13.835/15.600 ms`。MAS 设置较贵、求解较少；外部负载、固定方法顺序及重放/生产设置差异使这些数据不能作为加速比。人工 cap1 输入按预期退出 3、两种 PCG 都报告迭代上限，核心自检通过。边界与详细数据见 `AGIPC_COARSE_VECTOR_AND_COST_ANALYSIS.md`。
 
+### 5.13 粗层 MAS32 运行时接入
+
+新增显式 `--agipc-coarse-preconditioner mas32`，保留默认 Jacobi。相同可执行文件与网格的 27 帧对照均通过有限值、地面穿透和固定 ABD 检查。MAS 采用 `83/83`、零回退，Jacobi 采用 `77/85`、8 次粗 PCG 回退；应用 Newton 更新为 `56/58`，累计线性迭代为 `2367/6150`。两个终态逐顶点 RMS 差 `0.0001946583`，约占 Jacobi RMS 位移 `0.05260%`；相对已有细层基线都约 `0.127%`。
+
+初版仍有负面成本结果：MAS 完整粗层区间 `2430.358 ms`，Jacobi `1240.539 ms`；MAS 局部 CPU 诊断 `1431.870 ms`，占自身粗层区间约 58.9%，设置另占约 16.8%。迭代下降并未自动降低完整粗层成本。当前外部 GPU 负载和轨迹差异不允许速度结论，下一步应优化局部检查实现，保留数值拒绝门槛。详情见 `AGIPC_RUNTIME_COARSE_MAS32.md`。
+
 ## 6. 当前结论
 
 1. 稳定跨分组映射可以安全进入 Galerkin 路径，映射阶段不完整回退已在这三次 27 帧运行中消失。
@@ -233,14 +239,14 @@ AGIPC 在这一次运行中更快，是因为减少了 83 次 Newton 更新，�
 4. Newton 停止语义是此前比较中的重要混杂因素。统一阈值后，原始 StiffGIPC 也出现 101 步的第 27 帧长尾。
 5. 阶段计时表明粗层 PCG 是最大自适应单项；已采用路径上的细层预条件器重复构建也占到诊断仿真时间的 4.65%，现已通过延迟构建消除。
 6. 当前证据仍是非论文精确资产和单次运行，不能宣称已经复现论文的定量加速。
-7. 真实中大型粗矩阵出现 MAS32 迭代下降，完整方向和二次模型质量通过直接参考复核。单次成本诊断支持继续运行时实验；受控计时和真实异常样本仍待验证，默认粗层继续使用 Jacobi。
+7. 粗层 MAS 的冻结向量与运行时数值接入均有证据；运行时 CPU 局部诊断成为主要成本，当前不能宣称加速。保留默认 Jacobi，优先优化检查实现，再验证真实异常样本和受控计时。
 
 ## 7. 建议的下一步
 
 按信息收益和运行成本排序：
 
-1. 以显式实验选项接入粗层 MAS，保留默认 Jacobi 和异常回退，验证细层残差、终态及非线性轨迹；
-2. 补充真实异常粗残差/迭代上限样本，GPU 空闲后做必要的设置/求解重复计时及无显式诊断的 27 帧残差保护对照；
+1. 优化粗 MAS 局部数值检查的实现成本，与完整 CPU 诊断对照，保留真实残差和异常回退门槛；
+2. 补充真实异常粗残差/迭代上限样本，GPU 空闲后做必要的交错重复计时；设置复用和 GPU 邻接分别作为后续独立优化；
 3. 将逐次 CUDA event 改为低扰动累计计时后，仅对 AGIPC 与 paper-current 基线做三次交错重复，报告中位数和离散程度；
 4. 完成精确论文资产确认后，再开始 Figure 13/14/15 的定量复现。
 
@@ -271,6 +277,8 @@ AGIPC 在这一次运行中更快，是因为减少了 83 次 Newton 更新，�
 | 保护诊断逐顶点终态对照 | `perf_diag/agipc_guard_capture27_state_comparison.json` |
 | 完整粗解与成本分析 | `reports/agipc_reproduction/AGIPC_COARSE_VECTOR_AND_COST_ANALYSIS.md` |
 | GPU 向量独立直接解复核 | `perf_diag/agipc_coarse_vectors_independent.json` |
+| 粗层 MAS32 运行时实验 | `reports/agipc_reproduction/AGIPC_RUNTIME_COARSE_MAS32.md` |
+| 同构建运行时配对分析 | `perf_diag/agipc_runtime_mas32_pair_analysis.json` |
 | 方向质量运行 | `perf_diag/agipc_core_fig15_16k_direction_quality27.json` |
 | 方向质量逐 Newton 统计 | `perf_diag/agipc_core_fig15_16k_direction_quality27_stats.json` |
 | paper-current 基线 | `perf_diag/stiffgipc_fig15_16k_paper_stop27.json` |

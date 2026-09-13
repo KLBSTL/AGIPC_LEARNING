@@ -34,7 +34,8 @@ void configure_galerkin(int fine_correction_max_iterations,
                         bool adoption_enabled,
                         std::string fallback_diagnostics_directory = {},
                         std::string coarse_diagnostics_directory = {},
-                        bool use_coarse_mas32 = false);
+                        bool use_coarse_mas32 = false,
+                        std::string mas_validation = "gpu",bool mas_reuse_enabled = false);
 bool galerkin_adoption_enabled();
 gipc::Json update_galerkin_shadow(const GIPCTripletMatrix& fine_matrix,
                                   const double* fine_rhs,

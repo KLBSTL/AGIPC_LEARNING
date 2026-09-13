@@ -29,6 +29,8 @@ struct HierarchySelfTestResult
 };
 
 HierarchySelfTestResult run_hierarchy_self_test();
+gipc::Json run_local_diagnostics_gpu_self_test();
+bool local_diagnostics_agree(const gipc::Json& gpu,const gipc::Json& cpu);
 
 class TraditionalMAS32Preconditioner
 {
@@ -113,6 +115,10 @@ class TraditionalMAS32Preconditioner
 
     void preconditioning(const double3* R, double3* Z);
     gipc::Json numerical_diagnostics(const double3* R) const;
+    gipc::Json local_diagnostics_gpu() const;
+    // Caller must prove the node count, BCOO structure and graph are unchanged.
+    void refresh_fixed_graph_bcoo(Eigen::Matrix3d* values,int* rows,int* cols,
+                                 uint32_t* indices,int offset,int count);
     void BuildMultiLevelR(const double3* R);  // called in preconditioning
     void SchwarzLocalXSym();                  // called in preconditioning
     void SchwarzLocalXSym_block3();                  // called in preconditioning

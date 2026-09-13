@@ -3,6 +3,7 @@
 
 import argparse
 import json
+import re
 from pathlib import Path
 
 import numpy as np
@@ -32,6 +33,26 @@ def difference(left: np.ndarray, right: np.ndarray, reference_displacement: floa
             "relative_to_reference_rms_displacement": rms / max(reference_displacement, 1e-300)}
 
 
+def frame_iterations(metrics: dict, report_path: Path) -> dict:
+    path = report_path.with_suffix(".log")
+    if not path.is_file():
+        return {"available": False}
+    frames, pending = [], 0
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        iteration = re.search(r"iteration k:\s*(\d+)", line)
+        frame = re.search(r"frame id:\s*(\d+)", line)
+        if iteration:
+            pending += int(iteration.group(1))
+        if frame:
+            frames.append({"frame": int(frame.group(1)), "applied_newton_iterations": pending})
+            pending = 0
+    total = sum(frame["applied_newton_iterations"] for frame in frames)
+    if pending or len(frames) != metrics["frames_completed"] or total != metrics["newton_iterations"]:
+        raise ValueError(f"frame log and aggregate iteration metrics disagree: {path}")
+    return {"available": True, "frames": frames, "total_applied_iterations": total,
+            "worst_frames": sorted(frames, key=lambda f: f["applied_newton_iterations"], reverse=True)[:5]}
+
+
 def row(metrics: dict) -> dict:
     coarse = metrics["agipc_criterion"]["galerkin_shadow"]
     return {**{name: metrics[name] for name in (
@@ -40,6 +61,8 @@ def row(metrics: dict) -> dict:
         **{name: coarse[name] for name in (
             "adoption_attempts", "adoptions", "fallbacks", "fallback_reason_counts", "residual_guard_restores",
             "mas_attempts", "mas_local_failures", "total_mas_setup_wall_ms", "total_mas_validation_wall_ms")},
+        **{name: coarse[name] for name in (
+            "mas_validation_mode", "mas_reuse_enabled", "mas_graph_reuses") if name in coarse},
         "stage_timing_ms": coarse["total_stage_timing_ms"]}
 
 
@@ -61,6 +84,8 @@ def main() -> None:
     jacobi_state, mas_state = state(jacobi, args.jacobi), state(mas, args.mas)
     report = {"jacobi": row(jacobi), "mas32": row(mas),
               "mas_vs_jacobi": difference(mas_state, jacobi_state, jacobi["fem_rms_displacement"]),
+              "frame_iterations": {"jacobi": frame_iterations(jacobi, args.jacobi),
+                                   "mas32": frame_iterations(mas, args.mas)},
               "performance_claim": False}
     if args.fine_baseline:
         fine = json.loads(args.fine_baseline.read_text(encoding="utf-8"))

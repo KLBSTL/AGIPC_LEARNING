@@ -31,6 +31,7 @@ namespace
 constexpr int kThreads=256;
 constexpr double kResidualGrowthTolerance=1e-6;
 
+struct RuntimeCoarseMas;
 struct GalerkinState
 {
     std::unique_ptr<GIPCTripletMatrix> coarse_matrix;
@@ -49,6 +50,11 @@ struct GalerkinState
     bool use_coarse_mas32=false;
     std::size_t mas_attempts=0,mas_local_failures=0;
     double total_mas_setup_ms=0,total_mas_validation_ms=0;
+    std::string mas_validation="gpu";
+    bool mas_reuse_enabled=false;
+    std::size_t mas_graph_reuses=0;
+    gipc::Json mas_failure_samples=gipc::Json::array();
+    std::shared_ptr<RuntimeCoarseMas> runtime_mas;
     bool adoption_enabled=false;
     bool candidate_ready=false;
     std::string candidate_failure_reason="not_assembled";
@@ -70,7 +76,7 @@ struct GalerkinState
     std::size_t residual_guard_restores=0;
     gipc::Json frozen_fallback_samples=gipc::Json::array();
     std::string coarse_diagnostics_directory;
-    std::array<bool,3> frozen_coarse_categories={false,false,false};
+    std::array<bool,4> frozen_coarse_categories={false,false,false,false};
     gipc::Json frozen_coarse_samples=gipc::Json::array();
 };
 
@@ -91,18 +97,24 @@ struct RuntimeCoarseMas
     gpu_mas32::TraditionalMAS32Preconditioner value;
     bool allocated=false;
     int blocks=0,padded=0;
+    bool last_reused=false;
+    std::vector<int> cached_rows,cached_cols;
     cudatool::CudaDeviceBuffer<Eigen::Matrix3d> values;
     cudatool::CudaDeviceBuffer<int> rows,cols;
     cudatool::CudaDeviceBuffer<uint32_t> indices;
     cudatool::CudaDeviceBuffer<double> residual,z;
     ~RuntimeCoarseMas() { if(allocated) value.FreeMAS(); }
-    void setup(const GIPCTripletMatrix& matrix)
+    void setup(const GIPCTripletMatrix& matrix,bool allow_reuse)
     {
+        const int old_blocks=blocks;
         blocks=matrix.block_rows(); padded=(blocks+31)/32*32;
         const int unique=matrix.h_unique_key_number,padding=padded-blocks;
         std::vector<int> host_rows(unique),host_cols(unique),identity(padded);
         CUDA_SAFE_CALL(cudaMemcpy(host_rows.data(),matrix.block_row_indices(),unique*sizeof(int),cudaMemcpyDeviceToHost));
         CUDA_SAFE_CALL(cudaMemcpy(host_cols.data(),matrix.block_col_indices(),unique*sizeof(int),cudaMemcpyDeviceToHost));
+        last_reused=allocated && allow_reuse && old_blocks==blocks
+            && host_rows==cached_rows && host_cols==cached_cols;
+        if(allocated && !last_reused) { value.FreeMAS();allocated=false; }
         std::vector<std::vector<unsigned int>> graph(padded);
         for(int i=0;i<unique;++i)
         {
@@ -129,6 +141,12 @@ struct RuntimeCoarseMas
         std::vector<uint32_t> host_indices(unique+padding);
         std::iota(host_indices.begin(),host_indices.end(),uint32_t{0}); indices.copy_from_host(host_indices);
         residual.resize(3*padded); residual.reset_zero(); z.resize(3*padded);
+        if(last_reused)
+        {
+            value.refresh_fixed_graph_bcoo(values.data(),rows.data(),cols.data(),indices.data(),0,unique+padding);
+            CUDA_SAFE_CALL(cudaDeviceSynchronize());
+            return;
+        }
         allocated=true;
         value.initPreconditioner_Neighbor(padded,0,std::max<std::size_t>(1,neighbors.size()),nullptr,padded);
         value.neighborListSize=static_cast<int>(neighbors.size());
@@ -140,6 +158,7 @@ struct RuntimeCoarseMas
         value.initPreconditioner_Matrix();
         value.setPreconditioner_bcoo(values.data(),rows.data(),cols.data(),indices.data(),0,unique+padding,0);
         CUDA_SAFE_CALL(cudaDeviceSynchronize());
+        cached_rows=std::move(host_rows);cached_cols=std::move(host_cols);
     }
     void apply(const double* input,double* output)
     {
@@ -147,8 +166,20 @@ struct RuntimeCoarseMas
         value.preconditioning(reinterpret_cast<const double3*>(residual.data()),reinterpret_cast<double3*>(z.data()));
         CUDA_SAFE_CALL(cudaMemcpy(output,z.data(),3*blocks*sizeof(double),cudaMemcpyDeviceToDevice));
     }
-    gipc::Json diagnostics() const
-    { return value.numerical_diagnostics(reinterpret_cast<const double3*>(residual.data())); }
+    gipc::Json diagnostics(const std::string& mode) const
+    {
+        if(mode=="cpu") return value.numerical_diagnostics(reinterpret_cast<const double3*>(residual.data()));
+        auto result=value.local_diagnostics_gpu();
+        if(mode=="crosscheck")
+        {
+            const auto cpu=value.numerical_diagnostics(reinterpret_cast<const double3*>(residual.data()));
+            const bool agreement=gpu_mas32::local_diagnostics_agree(result,cpu);
+            result["gpu_passed"]=result.value("passed",false);
+            result["cpu_gpu_agreement"]=agreement;result["cpu_reference"]=cpu;
+            result["passed"]=result.value("passed",false) && agreement;
+        }
+        return result;
+    }
 };
 
 __device__ void transform_for_block(int fine_block,int prefix_blocks,
@@ -398,12 +429,13 @@ gipc::Json freeze_coarse_system(GalerkinState& target)
     const int blocks=target.coarse_matrix->block_rows();
     int category=-1;
     if(solve.value("failure_reason",std::string{})=="iteration_cap") category=2;
+    else if(solve.value("failure_reason",std::string{})=="mas_local_diagnostics_failed") category=3;
     else if(solve.value("converged",false) && blocks>1024) category=1;
     else if(solve.value("converged",false) && blocks>=257) category=0;
     if(category<0 || target.frozen_coarse_categories[category]) return nullptr;
 
     const auto started=std::chrono::steady_clock::now();
-    constexpr const char* names[]={"medium_converged","large_converged","iteration_cap"};
+    constexpr const char* names[]={"medium_converged","large_converged","iteration_cap","local_diagnostics_failure"};
     const std::filesystem::path root(target.coarse_diagnostics_directory);
     const std::string sample_name=std::string{names[category]}+"_"
         +std::to_string(target.updates);
@@ -425,6 +457,8 @@ gipc::Json freeze_coarse_system(GalerkinState& target)
         {"coarse_unique_blocks",unique},{"coarse_matrix_half_storage",true},
         {"matrix_block_layout","Eigen column-major FP64 3x3"},
         {"preconditioner",solve.value("preconditioner",std::string{"block_jacobi"})},{"coarse_solve",solve},
+        {"reference_solution_valid",solve.value("converged",false)},
+        {"coarse_solution_role","current iterate; zero or partial for rejected solves"},
         {"fine_block_nodes",target.last["fine_block_nodes"]},
         {"coarse_fem_nodes",target.last["coarse_fem_nodes"]},
         {"candidate_ready",target.candidate_ready},
@@ -639,7 +673,7 @@ gipc::Json solve_coarse_shadow(GalerkinState& target,const GIPCTripletMatrix& fi
     if(found!=blocks)
         return {{"attempted",true},{"converged",false},{"failure_reason","missing_or_singular_diagonal"},
                 {"diagonal_blocks_found",found},{"diagonal_blocks_expected",blocks}};
-    std::unique_ptr<RuntimeCoarseMas> mas;
+    std::shared_ptr<RuntimeCoarseMas> mas;
     gipc::Json mas_diagnostics=nullptr;
     double mas_setup_ms=0,mas_validation_ms=0;
     if(target.use_coarse_mas32)
@@ -647,10 +681,17 @@ gipc::Json solve_coarse_shadow(GalerkinState& target,const GIPCTripletMatrix& fi
         ++target.mas_attempts;
         const auto begin=std::chrono::steady_clock::now();
         try
-        { mas=std::make_unique<RuntimeCoarseMas>(); mas->setup(coarse); }
+        {
+            mas=target.mas_reuse_enabled?target.runtime_mas:nullptr;
+            if(!mas) mas=std::make_shared<RuntimeCoarseMas>();
+            mas->setup(coarse,target.mas_reuse_enabled);
+            if(target.mas_reuse_enabled) target.runtime_mas=mas;
+            if(mas->last_reused) ++target.mas_graph_reuses;
+        }
         catch(const std::exception& error)
         {
             ++target.mas_local_failures;
+            target.runtime_mas.reset();
             return {{"attempted",true},{"converged",false},{"failure_reason","mas_setup_failed"},
                     {"preconditioner","mas32"},{"setup_error",error.what()}};
         }
@@ -665,14 +706,40 @@ gipc::Json solve_coarse_shadow(GalerkinState& target,const GIPCTripletMatrix& fi
     if(mas)
     {
         const auto begin=std::chrono::steady_clock::now();
-        mas_diagnostics=mas->diagnostics();
+        mas_diagnostics=mas->diagnostics(target.mas_validation);
         mas_validation_ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-begin).count();
         target.total_mas_validation_ms+=mas_validation_ms;
         if(!mas_diagnostics.value("passed",false))
         {
             ++target.mas_local_failures;
+            if(target.mas_failure_samples.size()<4)
+            {
+                const auto probe_started=std::chrono::steady_clock::now();
+                auto paired=mas_diagnostics;
+                if(target.mas_validation=="gpu")
+                {
+                    const auto cpu=mas->diagnostics("cpu");
+                    paired["cpu_gpu_agreement"]=gpu_mas32::local_diagnostics_agree(paired,cpu);
+                    paired["cpu_reference"]=cpu;
+                }
+                else if(target.mas_validation=="cpu")
+                {
+                    const auto gpu=mas->diagnostics("gpu");
+                    paired["cpu_gpu_agreement"]=gpu_mas32::local_diagnostics_agree(gpu,paired);
+                    paired["gpu_reference"]=gpu;
+                }
+                const double probe_ms=std::chrono::duration<double,std::milli>(
+                    std::chrono::steady_clock::now()-probe_started).count();
+                target.total_mas_validation_ms+=probe_ms;mas_validation_ms+=probe_ms;
+                mas_diagnostics=std::move(paired);
+                target.mas_failure_samples.push_back({{"update_index",target.updates+1},
+                    {"coarse_block_nodes",blocks},{"coarse_unique_blocks",unique},
+                    {"mas_graph_reused",mas->last_reused},{"validation_mode",target.mas_validation},
+                    {"rejection_probe_wall_ms",probe_ms},{"diagnostic",mas_diagnostics}});
+            }
             return {{"attempted",true},{"converged",false},{"failure_reason","mas_local_diagnostics_failed"},
                     {"preconditioner","mas32"},{"mas_local_diagnostics",mas_diagnostics},
+                    {"max_iterations",std::min(512,std::max(1,dofs))},{"relative_tolerance",1e-3},
                     {"mas_setup_wall_ms",mas_setup_ms},{"mas_validation_wall_ms",mas_validation_ms}};
         }
     }
@@ -745,6 +812,7 @@ gipc::Json solve_coarse_shadow(GalerkinState& target,const GIPCTripletMatrix& fi
             {"preconditioner",mas?"mas32":"block_jacobi"},
             {"mas_local_diagnostics",mas_diagnostics},{"mas_setup_wall_ms",mas_setup_ms},
             {"mas_validation_wall_ms",mas_validation_ms},{"true_residual_checked",bool(mas)},
+            {"mas_validation_mode",target.mas_validation},{"mas_graph_reused",mas && mas->last_reused},
             {"recursive_final_residual_norm",std::sqrt(std::max(0.0,recursive2))},
             {"iterations",iterations},{"max_iterations",max_iterations},
             {"relative_tolerance",1e-3},{"initial_residual_norm",std::sqrt(initial2)},
@@ -937,10 +1005,13 @@ void configure_galerkin(int fine_correction_max_iterations,
                         bool adoption_enabled,
                         std::string fallback_diagnostics_directory,
                         std::string coarse_diagnostics_directory,
-                        bool use_coarse_mas32)
+                        bool use_coarse_mas32,std::string mas_validation,bool mas_reuse_enabled)
 {
+    state.runtime_mas.reset();state.mas_graph_reuses=0;
+    state.mas_validation=std::move(mas_validation);state.mas_reuse_enabled=mas_reuse_enabled;
     state.use_coarse_mas32=use_coarse_mas32;
     state.mas_attempts=state.mas_local_failures=0;
+    state.mas_failure_samples=gipc::Json::array();
     state.total_mas_setup_ms=state.total_mas_validation_ms=0;
     state.post_max_iterations=std::max(0,fine_correction_max_iterations);
     state.adoption_enabled=adoption_enabled;
@@ -950,7 +1021,7 @@ void configure_galerkin(int fine_correction_max_iterations,
     state.residual_guard_restores=0;
     state.frozen_fallback_samples=gipc::Json::array();
     state.coarse_diagnostics_directory=std::move(coarse_diagnostics_directory);
-    state.frozen_coarse_categories={false,false,false};
+    state.frozen_coarse_categories={false,false,false,false};
     state.frozen_coarse_samples=gipc::Json::array();
 }
 
@@ -1133,6 +1204,10 @@ gipc::Json galerkin_summary()
     result["mas_local_failures"]=state.mas_local_failures;
     result["total_mas_setup_wall_ms"]=state.total_mas_setup_ms;
     result["total_mas_validation_wall_ms"]=state.total_mas_validation_ms;
+    result["mas_validation_mode"]=state.mas_validation;
+    result["mas_reuse_enabled"]=state.mas_reuse_enabled;
+    result["mas_graph_reuses"]=state.mas_graph_reuses;
+    result["mas_failure_samples"]=state.mas_failure_samples;
     result["frozen_fallback_samples"]=state.frozen_fallback_samples;
     result["frozen_coarse_samples"]=state.frozen_coarse_samples;
     result["adoption_enabled"]=state.adoption_enabled;

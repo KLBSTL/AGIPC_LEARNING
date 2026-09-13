@@ -9,6 +9,7 @@
 #include "TraditionalMAS32Preconditioner.cuh"
 #include "cuda_tools/cuda_tools.h"
 #include "device_launch_parameters.h"
+#include <math_constants.h>
 #include <cuda_tools/cuda_all.h>
 #include <thrust/device_ptr.h>
 #include <thrust/sort.h>
@@ -30,6 +31,194 @@ using namespace std;
 
 namespace gpu_mas32
 {
+
+namespace
+{
+constexpr int kCheckDimension=3*GPU_MAS_BANKSIZE,kCheckThreads=128;
+struct LocalGpuCheck
+{
+    int local_finite,inverse_finite,local_spd,inverse_spd;
+    double minimum_local_diagonal,minimum_inverse_diagonal,inverse_residual;
+};
+
+template<typename Matrix>
+__device__ double packed_scalar(const Matrix& matrix,int row,int col)
+{
+    int br=row/3,bc=col/3,rr=row%3,cc=col%3;
+    if(br>bc) { const int tmp=br;br=bc;bc=tmp;const int tr=rr;rr=cc;cc=tr; }
+    const int index=GPU_MAS_BANKSIZE*br-br*(br+1)/2+bc;
+    return static_cast<double>(matrix.M[index](rr,cc));
+}
+
+__device__ void check_cholesky(double* work,int* positive)
+{
+    constexpr int n=kCheckDimension;
+    for(int k=0;k<n;++k)
+    {
+        if(threadIdx.x==0)
+        {
+            const double pivot=work[k*n+k];
+            if(!isfinite(pivot) || pivot<=0) *positive=0;
+            else work[k*n+k]=sqrt(pivot);
+        }
+        __syncthreads();
+        if(!*positive) break;
+        const int row=threadIdx.x;
+        if(row>k && row<n) work[row*n+k]/=work[k*n+k];
+        __syncthreads();
+        if(row>k && row<n)
+            for(int col=k+1;col<=row;++col)
+                work[row*n+col]-=work[row*n+k]*work[col*n+k];
+        __syncthreads();
+    }
+}
+
+__global__ void check_local_matrices(const __GEIGEN__::GPUMas32MatrixSymT* local,
+                                     const __GEIGEN__::GPUMas32MatrixSymf* inverse,
+                                     LocalGpuCheck* results)
+{
+    constexpr int n=kCheckDimension;
+    extern __shared__ double work[];
+    __shared__ int finite[2],positive[2];
+    __shared__ double partial[kCheckThreads],diag_local[kCheckThreads],diag_inverse[kCheckThreads];
+    const int tid=threadIdx.x,id=blockIdx.x;
+    if(tid<2) finite[tid]=1;
+    diag_local[tid]=diag_inverse[tid]=CUDART_INF;
+    __syncthreads();
+    for(int i=tid;i<n*n;i+=blockDim.x)
+    {
+        const int row=i/n,col=i%n;
+        double a=packed_scalar(local[id],row,col);
+        const double b=packed_scalar(inverse[id],row,col);
+        if(row==col && a==0) a=1; // Matches the complete CPU diagnostic.
+        if(!isfinite(a)) atomicExch(&finite[0],0);
+        if(!isfinite(b)) atomicExch(&finite[1],0);
+        work[i]=a;
+        if(row==col) { diag_local[tid]=fmin(diag_local[tid],a);diag_inverse[tid]=fmin(diag_inverse[tid],b); }
+    }
+    __syncthreads();
+    if(tid<2) positive[tid]=finite[tid];
+    __syncthreads();
+    if(finite[0]) check_cholesky(work,&positive[0]);
+    for(int i=tid;i<n*n;i+=blockDim.x) work[i]=packed_scalar(inverse[id],i/n,i%n);
+    __syncthreads();
+    if(finite[1]) check_cholesky(work,&positive[1]);
+    for(int i=tid;i<n*n;i+=blockDim.x)
+    {
+        double a=packed_scalar(local[id],i/n,i%n);
+        if(i/n==i%n && a==0) a=1;
+        work[i]=a;
+    }
+    __syncthreads();
+    double sum=0;
+    if(finite[0] && finite[1])
+        for(int i=tid;i<n*n;i+=blockDim.x)
+        {
+            const int row=i/n,col=i%n;
+            double product=0;
+            for(int k=0;k<n;++k) product+=work[row*n+k]*packed_scalar(inverse[id],k,col);
+            const double error=product-(row==col?1.0:0.0);
+            sum+=error*error;
+        }
+    partial[tid]=sum;
+    __syncthreads();
+    if(tid==0)
+    {
+        double norm2=0,min_a=CUDART_INF,min_b=CUDART_INF;
+        for(int i=0;i<kCheckThreads;++i)
+        { norm2+=partial[i];min_a=fmin(min_a,diag_local[i]);min_b=fmin(min_b,diag_inverse[i]); }
+        results[id]={finite[0],finite[1],positive[0],positive[1],min_a,min_b,sqrt(norm2/n)};
+    }
+}
+
+gipc::Json gpu_local_checks(const __GEIGEN__::GPUMas32MatrixSymT* local,
+                            const __GEIGEN__::GPUMas32MatrixSymf* inverse,int count)
+{
+    if(count<1) return {{"passed",false},{"failure_reason","empty_local_matrices"}};
+    constexpr int bytes=kCheckDimension*kCheckDimension*sizeof(double);
+    CUDA_SAFE_CALL(cudaFuncSetAttribute(check_local_matrices,cudaFuncAttributeMaxDynamicSharedMemorySize,bytes));
+    cudatool::CudaDeviceBuffer<LocalGpuCheck> device_result;
+    device_result.resize(count);
+    check_local_matrices<<<count,kCheckThreads,bytes>>>(local,inverse,device_result.data());
+    CUDA_SAFE_CALL(cudaGetLastError());
+    std::vector<LocalGpuCheck> results;
+    device_result.copy_to_host(results);
+    int local_spd=0,inverse_spd=0,nonfinite_a=0,nonfinite_b=0,first_a=-1,first_b=-1;
+    double min_a=std::numeric_limits<double>::infinity(),min_b=min_a,max_residual=0;
+    for(int i=0;i<count;++i)
+    {
+        const auto& r=results[i]; local_spd+=r.local_spd;inverse_spd+=r.inverse_spd;
+        nonfinite_a+=!r.local_finite;nonfinite_b+=!r.inverse_finite;
+        if(!r.local_spd && first_a<0) first_a=i;
+        if(!r.inverse_spd && first_b<0) first_b=i;
+        min_a=std::min(min_a,r.minimum_local_diagonal);min_b=std::min(min_b,r.minimum_inverse_diagonal);
+        if(!std::isfinite(r.inverse_residual)) max_residual=std::numeric_limits<double>::infinity();
+        else max_residual=std::max(max_residual,r.inverse_residual);
+    }
+    return {{"implementation","gpu_fp64_local_checks"},{"matrix_count",count},
+        {"local_spd_count",local_spd},{"inverse_spd_count",inverse_spd},
+        {"first_local_spd_failure",first_a},{"first_inverse_spd_failure",first_b},
+        {"nonfinite_local_count",nonfinite_a},{"nonfinite_inverse_count",nonfinite_b},
+        {"minimum_local_diagonal",min_a},{"minimum_inverse_diagonal",min_b},
+        {"maximum_inverse_residual",max_residual},
+        {"passed",local_spd==count && inverse_spd==count && !nonfinite_a && !nonfinite_b && max_residual<=1e-3}};
+}
+}
+
+gipc::Json run_local_diagnostics_gpu_self_test()
+{
+    std::vector<__GEIGEN__::GPUMas32MatrixSymT> local(6);
+    std::vector<__GEIGEN__::GPUMas32MatrixSymf> inverse(6);
+    for(int id=0;id<6;++id)
+        for(int row=0;row<GPU_MAS_BANKSIZE;++row)
+            for(int col=row;col<GPU_MAS_BANKSIZE;++col)
+            {
+                const int index=GPU_MAS_BANKSIZE*row-row*(row+1)/2+col;
+                local[id].M[index].setZero();inverse[id].M[index].setZero();
+                if(row==col) {local[id].M[index].setIdentity();inverse[id].M[index].setIdentity();}
+            }
+    local[1].M[0](0,0)=-1;inverse[2].M[0](0,0)=-1;
+    inverse[3].M[0](0,0)=std::numeric_limits<float>::quiet_NaN();
+    for(int row=0;row<GPU_MAS_BANKSIZE;++row)
+        inverse[4].M[GPU_MAS_BANKSIZE*row-row*(row+1)/2+row]*=2.0f;
+    local[5].M[0](0,0)=std::numeric_limits<double>::quiet_NaN();
+    cudatool::CudaDeviceBuffer<__GEIGEN__::GPUMas32MatrixSymT> a;
+    cudatool::CudaDeviceBuffer<__GEIGEN__::GPUMas32MatrixSymf> b;
+    a.copy_from_host(local);b.copy_from_host(inverse);
+    gipc::Json cases=gipc::Json::array();bool passed=true;
+    for(int id=0;id<6;++id)
+    {
+        const auto result=gpu_local_checks(a.data()+id,b.data()+id,1);
+        const bool ok=result.value("passed",false)==(id==0)
+            && (id!=1 || result.value("local_spd_count",1)==0)
+            && (id!=2 || result.value("inverse_spd_count",1)==0)
+            && (id!=3 || result.value("nonfinite_inverse_count",0)==1)
+            && (id!=4 || result.value("maximum_inverse_residual",0.0)>1e-3)
+            && (id!=5 || result.value("nonfinite_local_count",0)==1);
+        cases.push_back({{"case",id},{"expected_pass",id==0},{"check_passed",ok},{"diagnostic",result}});passed&=ok;
+    }
+    return {{"passed",passed},{"cases",cases}};
+}
+
+gipc::Json TraditionalMAS32Preconditioner::local_diagnostics_gpu() const
+{ return gpu_local_checks(d_inverseMatMas,d_precondMatMas,totalNumberClusters/GPU_MAS_BANKSIZE); }
+
+bool local_diagnostics_agree(const gipc::Json& gpu,const gipc::Json& cpu)
+{
+    for(const char* key : {"passed","matrix_count","local_spd_count","inverse_spd_count",
+        "first_local_spd_failure","first_inverse_spd_failure","nonfinite_local_count","nonfinite_inverse_count"})
+        if(gpu.at(key)!=cpu.at(key)) return false;
+    const auto& a=gpu.at("maximum_inverse_residual");const auto& b=cpu.at("maximum_inverse_residual");
+    return a.is_number() && b.is_number() && std::abs(a.get<double>()-b.get<double>())<=1e-9;
+}
+
+void TraditionalMAS32Preconditioner::refresh_fixed_graph_bcoo(Eigen::Matrix3d* values,int* rows,int* cols,
+                                                            uint32_t* indices,int offset,int count)
+{
+    if(totalNodes<1) return;
+    CUDA_SAFE_CALL(cudaMemset(d_inverseMatMas,0,totalNumberClusters/GPU_MAS_BANKSIZE*sizeof(__GEIGEN__::GPUMas32MatrixSymT)));
+    PrepareHessian_bcoo(values,rows,cols,indices,offset,count);
+}
 
 __global__ void _buildCML0_new(const unsigned int* _neighborStart,
                                unsigned int*       _neighborNum,

@@ -49,6 +49,8 @@ std::string runtime_options_help()
            "  --agipc-max-levels <N>\n"
            "  --agipc-fine-correction-iterations <N>\n"
            "  --agipc-coarse-preconditioner block-jacobi|mas32 (experimental)\n"
+           "  --agipc-mas-validation gpu|cpu|crosscheck\n"
+           "  --agipc-mas-reuse (experimental exact-structure cache)\n"
            "  --agipc-diagnostics\n"
            "  --agipc-self-test (criterion GPU gate)\n"
            "  --agipc-post-cg-max <N> (alias; zero allowed for ablation)\n"
@@ -180,6 +182,10 @@ ParseResult parse_runtime_options(int argc, char** argv)
                 options.agipc_max_levels = std::stoi(require_value(i, argument));
             else if(argument == "--agipc-coarse-preconditioner")
                 options.agipc_coarse_preconditioner = require_value(i, argument);
+            else if(argument == "--agipc-mas-validation")
+                options.agipc_mas_validation = require_value(i, argument);
+            else if(argument == "--agipc-mas-reuse")
+                options.agipc_mas_reuse = true;
             else if(argument == "--agipc-fine-correction-iterations" || argument == "--agipc-post-cg-max")
                 options.agipc_fine_correction_iterations =
                     std::stoi(require_value(i, argument));
@@ -209,6 +215,10 @@ ParseResult parse_runtime_options(int argc, char** argv)
         return invalid(options, "agipc-coarse-preconditioner must be block-jacobi or mas32");
     if(options.agipc_coarse_preconditioner == "mas32" && options.solver == SolverMode::StiffGIPC)
         return invalid(options, "experimental coarse mas32 requires --solver agipc-core");
+    if(options.agipc_mas_validation!="gpu" && options.agipc_mas_validation!="cpu" && options.agipc_mas_validation!="crosscheck")
+        return invalid(options,"agipc-mas-validation must be gpu, cpu, or crosscheck");
+    if(options.agipc_mas_reuse && options.agipc_coarse_preconditioner!="mas32")
+        return invalid(options,"agipc-mas-reuse requires coarse mas32");
     if(options.scene == "paper-fig15-cloth-abd-scaled" && !young_modulus_was_explicit)
         options.young_modulus = 1e6;
     if(!options.cloth_mesh.empty()

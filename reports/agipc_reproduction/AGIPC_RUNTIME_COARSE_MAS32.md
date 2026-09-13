@@ -2,6 +2,8 @@
 
 日期：2026-09-13。新增显式 `--agipc-coarse-preconditioner block-jacobi|mas32`，默认 `block-jacobi`；MAS32 是矩阵邻接与原始粗块顺序下的实验适配，不标为论文 MAS 完整实现。
 
+这是初版接入的历史记录。后续 GPU 局部检查、显式同结构复用及成组消融见 [AGIPC_MAS_BATCH_OPTIMIZATION.md](AGIPC_MAS_BATCH_OPTIMIZATION.md)；下文 CPU 检查成本与每次重建描述保留为初版证据。
+
 ## 1. 接入范围
 
 选择 `--solver agipc-core --agipc-coarse-preconditioner mas32` 后，粗层 PCG 使用已有 Traditional GPU MAS32，细层矩阵、细层后校正、CCD、线搜索与细层回退保持现有路径。非 AGIPC 的 StiffGIPC 模式拒绝 MAS32 粗层选项，避免静默忽略。

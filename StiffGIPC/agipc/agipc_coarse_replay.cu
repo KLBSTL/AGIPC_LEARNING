@@ -315,6 +315,8 @@ gipc::Json replay_coarse_snapshot(const std::string& sample_directory)
                              reinterpret_cast<double3*>(initial_z.data()));
     const auto diagnostics=mas.value.numerical_diagnostics(
         reinterpret_cast<const double3*>(device_rhs.data()));
+    const auto gpu_diagnostics=mas.value.local_diagnostics_gpu();
+    const bool diagnostics_agree=gpu_mas32::local_diagnostics_agree(gpu_diagnostics,diagnostics);
     gipc::Json mas_solve={{"passed",false},{"failure_reason","invalid_local_mas_blocks"}};
     if(diagnostics.value("passed",false))
         mas_solve=run_replay_pcg(matrix,device_rhs.data(),reference,blocks,iteration_cap,
@@ -332,8 +334,9 @@ gipc::Json replay_coarse_snapshot(const std::string& sample_directory)
         {"timing_scope","diagnostic single run; setup then PCG; validation and vector serialization excluded"},
         {"solution_scope","original coarse blocks only; FP64 xyz block order"},
         {"mas32_local_diagnostics",diagnostics},{"mas32",mas_solve},
+        {"mas32_gpu_local_diagnostics",gpu_diagnostics},{"cpu_gpu_local_diagnostics_agree",diagnostics_agree},
         {"passed",std::isfinite(spmv_error) && spmv_error<=1e-12
-            && jacobi.value("passed",false) && mas_solve.value("passed",false)},
+            && jacobi.value("passed",false) && mas_solve.value("passed",false) && diagnostics_agree},
         {"performance_claim",false},{"simulation_dispatch_changed",false}};
 }
 }

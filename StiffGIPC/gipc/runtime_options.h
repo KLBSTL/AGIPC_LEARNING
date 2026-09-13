@@ -38,6 +38,8 @@ struct RuntimeOptions
     int         agipc_max_levels = 16;
     int         agipc_fine_correction_iterations = 10;
     std::string agipc_coarse_preconditioner = "block-jacobi";
+    std::string agipc_mas_validation = "gpu";
+    bool        agipc_mas_reuse = false;
     bool        agipc_diagnostics = false;
     bool        agipc_self_test   = false;
     bool        spmv_self_test    = false;

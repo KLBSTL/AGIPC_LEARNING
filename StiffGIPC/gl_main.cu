@@ -1636,7 +1636,8 @@ void initScene()
                                   agipc_core_enabled,
                                   std::move(fallback_diagnostics_directory),
                                   std::move(coarse_diagnostics_directory),
-                                  runtime_options.agipc_coarse_preconditioner == "mas32");
+                                  runtime_options.agipc_coarse_preconditioner == "mas32",
+                                  runtime_options.agipc_mas_validation,runtime_options.agipc_mas_reuse);
         agipc::initialize_criterion(tetMesh,runtime_options.agipc_threshold,
                                     runtime_options.agipc_max_levels);
     }
@@ -1941,6 +1942,8 @@ int run_headless()
     metrics["framework"]        = runtime_options.framework;
     metrics["preconditioner"]   = runtime_options.preconditioner;
     metrics["agipc_coarse_preconditioner"] = runtime_options.agipc_coarse_preconditioner;
+    metrics["agipc_mas_validation"]=runtime_options.agipc_mas_validation;
+    metrics["agipc_mas_reuse"]=runtime_options.agipc_mas_reuse;
     metrics["spmv"]             = gipc::to_string(runtime_options.spmv);
     const bool paper_mixed_scene = runtime_options.scene == "paper-fig12-coupling-scaled"
                                    || runtime_options.scene == "paper-fig15-cloth-abd-scaled";
@@ -2332,8 +2335,10 @@ int main(int argc, char** argv)
         metrics["fine_mask_mismatches"] = result.fine_mask_mismatches;
         metrics["coarse_mapping_mismatches"] = result.coarse_mapping_mismatches;
         metrics["going_next_mismatches"] = result.going_next_mismatches;
+        metrics["local_gpu_checks"]=gpu_mas32::run_local_diagnostics_gpu_self_test();
+        metrics["passed"]=result.passed && metrics["local_gpu_checks"].value("passed",false);
         std::cout << metrics.dump(2) << '\n';
-        return result.passed ? 0 : 3;
+        return metrics.value("passed",false) ? 0 : 3;
     }
     if(!std::filesystem::is_directory(assets_dir))
     {

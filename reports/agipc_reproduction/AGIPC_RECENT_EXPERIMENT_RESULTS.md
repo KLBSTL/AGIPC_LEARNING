@@ -201,6 +201,12 @@ AGIPC 在这一次运行中更快，是因为减少了 83 次 Newton 更新，�
 
 1–16 个粗块的小系统超过全部次数的 60%，但耗时占比不超过 6.1%。主要优化对象因此不是小系统固定开销，而是接触帧 Newton 尾部的大型粗系统。详细分箱、采用结果和失败类型见 `AGIPC_COARSE_PCG_ANALYSIS.md`。
 
+### 5.9 大型粗系统采样准备
+
+2026-09-13 已实现显式诊断下的粗系统冻结：257–1024 块的已收敛系统、1024 块以上的已收敛系统、达到迭代上限的系统，各最多一个样本。数据位于独立的 `<metrics-stem>_coarse_samples/`，保存 `Hc/bc/dc`，不增加求解次数。诊断写盘会扰动完整路径耗时，因此采样运行不能作为性能比较。
+
+新增 `replay_frozen_coarse.py` 独立重放 block-Jacobi PCG；对之前三个 7 块样本均一次迭代收敛，CPU 与保存 GPU 粗解最大相对方向差为 `2.22e-16`。GPU 仍被占用，尚未取得大型样本。使用命令和验证边界见 `AGIPC_COARSE_SNAPSHOT_PREPARATION.md`。
+
 ## 6. 当前结论
 
 1. 稳定跨分组映射可以安全进入 Galerkin 路径，映射阶段不完整回退已在这三次 27 帧运行中消失。
@@ -215,7 +221,7 @@ AGIPC 在这一次运行中更快，是因为减少了 83 次 Newton 更新，�
 按信息收益和运行成本排序：
 
 1. GPU 空闲后复验 27 帧后校正残差保护，检查恢复次数、采用率和 Newton 尾部；
-2. 冻结 257–1024 块、1025 块以上及达到迭代上限的代表性粗系统，在同一 `Hc/gc` 上比较 block-Jacobi 与论文 MAS 粗层预条件器；
+2. 用已实现的显式采样取得中型、大型及达到迭代上限的粗系统，检查保存解的真实残差，再在同一 `Hc/gc` 上比较 block-Jacobi 与论文 MAS 粗层预条件器；
 3. 将逐次 CUDA event 改为低扰动累计计时后，仅对 AGIPC 与 paper-current 基线做三次交错重复，报告中位数和离散程度；
 4. 完成精确论文资产确认后，再开始 Figure 13/14/15 的定量复现。
 
@@ -235,6 +241,8 @@ AGIPC 在这一次运行中更快，是因为减少了 83 次 Newton 更新，�
 | 延迟预条件器逐 Newton 统计 | `perf_diag/agipc_core_fig15_16k_deferred_preconditioner27_stats.json` |
 | 粗层 PCG 分布汇总 | `perf_diag/agipc_core_fig15_16k_coarse_pcg_analysis.json` |
 | 粗层 PCG 分析报告 | `reports/agipc_reproduction/AGIPC_COARSE_PCG_ANALYSIS.md` |
+| 粗系统采样与重放准备 | `reports/agipc_reproduction/AGIPC_COARSE_SNAPSHOT_PREPARATION.md` |
+| 已有小型粗系统重放 | `perf_diag/agipc_coarse_replay_small.json` |
 | 方向质量运行 | `perf_diag/agipc_core_fig15_16k_direction_quality27.json` |
 | 方向质量逐 Newton 统计 | `perf_diag/agipc_core_fig15_16k_direction_quality27_stats.json` |
 | paper-current 基线 | `perf_diag/stiffgipc_fig15_16k_paper_stop27.json` |

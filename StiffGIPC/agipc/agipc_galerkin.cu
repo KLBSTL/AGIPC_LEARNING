@@ -64,6 +64,9 @@ struct GalerkinState
     std::size_t direction_quality_evaluations=0;
     std::size_t residual_guard_restores=0;
     gipc::Json frozen_fallback_samples=gipc::Json::array();
+    std::string coarse_diagnostics_directory;
+    std::array<bool,3> frozen_coarse_categories={false,false,false};
+    gipc::Json frozen_coarse_samples=gipc::Json::array();
 };
 
 GalerkinState state;
@@ -260,7 +263,9 @@ void write_binary(const std::filesystem::path& path,const T* device_values,std::
     std::vector<T> host(count);
     if(count>0)
         CUDA_SAFE_CALL(cudaMemcpy(host.data(),device_values,count*sizeof(T),cudaMemcpyDeviceToHost));
-    std::ofstream output(path,std::ios::binary|std::ios::trunc);
+    std::ofstream output;
+    output.exceptions(std::ios::badbit|std::ios::failbit);
+    output.open(path,std::ios::binary|std::ios::trunc);
     output.write(reinterpret_cast<const char*>(host.data()),
                  static_cast<std::streamsize>(host.size()*sizeof(T)));
 }
@@ -304,6 +309,62 @@ const char* quality_category_name(int category)
 {
     constexpr const char* names[]={"mild","moderate","severe"};
     return names[std::clamp(category,0,2)];
+}
+
+gipc::Json freeze_coarse_system(GalerkinState& target)
+{
+    if(target.coarse_diagnostics_directory.empty()) return nullptr;
+    const auto& solve=target.last["coarse_solve"];
+    const int blocks=target.coarse_matrix->block_rows();
+    int category=-1;
+    if(solve.value("failure_reason",std::string{})=="iteration_cap") category=2;
+    else if(solve.value("converged",false) && blocks>1024) category=1;
+    else if(solve.value("converged",false) && blocks>=257) category=0;
+    if(category<0 || target.frozen_coarse_categories[category]) return nullptr;
+
+    const auto started=std::chrono::steady_clock::now();
+    constexpr const char* names[]={"medium_converged","large_converged","iteration_cap"};
+    const std::filesystem::path root(target.coarse_diagnostics_directory);
+    const std::string sample_name=std::string{names[category]}+"_"
+        +std::to_string(target.updates);
+    const auto directory=root/sample_name;
+    std::filesystem::create_directories(directory);
+    const auto& matrix=*target.coarse_matrix;
+    const std::size_t unique=matrix.h_unique_key_number;
+    write_binary(directory/"coarse_A_values.f64x9.bin",matrix.block_values(),unique);
+    write_binary(directory/"coarse_A_rows.i32.bin",matrix.block_row_indices(),unique);
+    write_binary(directory/"coarse_A_cols.i32.bin",matrix.block_col_indices(),unique);
+    write_binary(directory/"coarse_rhs.f64.bin",target.coarse_rhs.data(),
+                 target.coarse_rhs.size());
+    write_binary(directory/"coarse_solution.f64.bin",target.coarse_solution.data(),
+                 target.coarse_solution.size());
+    gipc::Json metadata={
+        {"format","agipc_coarse_system_v1"},{"sample_name",sample_name},
+        {"category",names[category]},{"update_index",target.updates},
+        {"coarse_block_nodes",blocks},{"coarse_dofs",3*blocks},
+        {"coarse_unique_blocks",unique},{"coarse_matrix_half_storage",true},
+        {"matrix_block_layout","Eigen column-major FP64 3x3"},
+        {"preconditioner","block_jacobi"},{"coarse_solve",solve},
+        {"fine_block_nodes",target.last["fine_block_nodes"]},
+        {"coarse_fem_nodes",target.last["coarse_fem_nodes"]},
+        {"candidate_ready",target.candidate_ready},
+        {"candidate_failure_reason",target.candidate_failure_reason},
+        {"binary_freeze_ms",std::chrono::duration<double,std::milli>(
+            std::chrono::steady_clock::now()-started).count()}};
+    auto samples=target.frozen_coarse_samples;
+    samples.push_back(metadata);
+    std::ofstream output;
+    output.exceptions(std::ios::badbit|std::ios::failbit);
+    output.open(directory/"metadata.json");
+    output<<metadata.dump(2)<<'\n';
+    output.close();
+    output.open(root/"manifest.json");
+    output<<gipc::Json{{"format","agipc_coarse_samples_v1"},
+                      {"samples",samples}}.dump(2)<<'\n';
+    output.close();
+    target.frozen_coarse_categories[category]=true;
+    target.frozen_coarse_samples=std::move(samples);
+    return metadata;
 }
 
 gipc::Json post_correct_shadow(GalerkinState& target,const GIPCTripletMatrix& fine,
@@ -702,6 +763,8 @@ gipc::Json assemble_shadow(GalerkinState& target,
                      {"coarse_solve",coarse_elapsed},{"post_correction",post_elapsed}}},
                  {"coarse_solve",coarse_solve},{"post_correction",post_correction},
                  {"controls_solver",false}};
+    const auto frozen=freeze_coarse_system(target);
+    if(!frozen.is_null()) target.last["coarse_system_freeze"]=frozen;
     return target.last;
 }
 
@@ -738,7 +801,8 @@ gipc::Json adopt_candidate(GalerkinState& target,double* destination,
 
 void configure_galerkin(int fine_correction_max_iterations,
                         bool adoption_enabled,
-                        std::string fallback_diagnostics_directory)
+                        std::string fallback_diagnostics_directory,
+                        std::string coarse_diagnostics_directory)
 {
     state.post_max_iterations=std::max(0,fine_correction_max_iterations);
     state.adoption_enabled=adoption_enabled;
@@ -747,6 +811,9 @@ void configure_galerkin(int fine_correction_max_iterations,
     state.direction_quality_evaluations=0;
     state.residual_guard_restores=0;
     state.frozen_fallback_samples=gipc::Json::array();
+    state.coarse_diagnostics_directory=std::move(coarse_diagnostics_directory);
+    state.frozen_coarse_categories={false,false,false};
+    state.frozen_coarse_samples=gipc::Json::array();
 }
 
 bool galerkin_adoption_enabled()
@@ -924,6 +991,7 @@ gipc::Json galerkin_summary()
     result["direction_quality_evaluations"]=state.direction_quality_evaluations;
     result["residual_guard_restores"]=state.residual_guard_restores;
     result["frozen_fallback_samples"]=state.frozen_fallback_samples;
+    result["frozen_coarse_samples"]=state.frozen_coarse_samples;
     result["adoption_enabled"]=state.adoption_enabled;
     result["adoption_attempts"]=state.adoption_attempts;
     result["adoptions"]=state.adoptions;

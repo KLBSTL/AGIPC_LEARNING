@@ -1620,6 +1620,7 @@ void initScene()
     if(runtime_options.agipc_diagnostics || agipc_core_enabled)
     {
         std::string fallback_diagnostics_directory;
+        std::string coarse_diagnostics_directory;
         if(runtime_options.agipc_diagnostics)
         {
             const std::filesystem::path diagnostic_base=
@@ -1628,10 +1629,13 @@ void initScene()
                     : std::filesystem::path(runtime_options.metrics_path);
             fallback_diagnostics_directory=(diagnostic_base.parent_path()
                 /(diagnostic_base.stem().string()+"_fallback_samples")).string();
+            coarse_diagnostics_directory=(diagnostic_base.parent_path()
+                /(diagnostic_base.stem().string()+"_coarse_samples")).string();
         }
         agipc::configure_galerkin(runtime_options.agipc_fine_correction_iterations,
                                   agipc_core_enabled,
-                                  std::move(fallback_diagnostics_directory));
+                                  std::move(fallback_diagnostics_directory),
+                                  std::move(coarse_diagnostics_directory));
         agipc::initialize_criterion(tetMesh,runtime_options.agipc_threshold,
                                     runtime_options.agipc_max_levels);
     }

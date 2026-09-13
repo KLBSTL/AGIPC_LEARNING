@@ -41,6 +41,8 @@ struct RuntimeOptions
     std::string agipc_mas_validation = "gpu";
     bool        agipc_mas_reuse = false;
     bool        agipc_diagnostics = false;
+    std::string agipc_direction_freeze_path;
+    int         agipc_direction_freeze_after_update = 0;
     bool        agipc_self_test   = false;
     bool        spmv_self_test    = false;
     bool        mas32_self_test   = false;

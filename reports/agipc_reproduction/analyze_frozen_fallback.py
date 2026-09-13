@@ -47,7 +47,7 @@ def symmetric_half_spmv(
     return y.reshape(-1)
 
 
-def reconstruct_prolongated(sample: Path, metadata: dict) -> np.ndarray:
+def reconstruct_prolongated(sample: Path, metadata: dict, coarse_solution: np.ndarray | None = None) -> np.ndarray:
     fine_dofs = int(metadata["fine_dofs"])
     fine_blocks = int(metadata["fine_block_nodes"])
     fine_nodes = int(metadata["mapping_fine_nodes"])
@@ -57,7 +57,8 @@ def reconstruct_prolongated(sample: Path, metadata: dict) -> np.ndarray:
     bases = read_vector(sample / "coarse_block_bases.i32.bin", np.int32, coarse_nodes)
     masks = read_vector(sample / "coarse_basis_masks.i32.bin", np.int32, coarse_nodes)
     rest = read_vector(sample / "fine_rest_positions.f64x3.bin", np.float64, 3 * fine_nodes).reshape(-1, 3)
-    coarse = read_vector(sample / "coarse_solution.f64.bin", np.float64)
+    coarse = (read_vector(sample / "coarse_solution.f64.bin", np.float64)
+              if coarse_solution is None else coarse_solution)
     prolonged = np.zeros((fine_blocks, 3), dtype=np.float64)
     prolonged[:prefix_blocks] = coarse[: 3 * prefix_blocks].reshape(prefix_blocks, 3)
     for local in range(fine_nodes):

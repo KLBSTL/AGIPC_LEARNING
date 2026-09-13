@@ -52,6 +52,8 @@ std::string runtime_options_help()
            "  --agipc-mas-validation gpu|cpu|crosscheck\n"
            "  --agipc-mas-reuse (experimental exact-structure cache)\n"
            "  --agipc-diagnostics\n"
+           "  --agipc-direction-freeze-path <DIRECTORY> (capture one accepted direction and stop)\n"
+           "  --agipc-direction-freeze-after-update <N>\n"
            "  --agipc-self-test (criterion GPU gate)\n"
            "  --agipc-post-cg-max <N> (alias; zero allowed for ablation)\n"
            "  --help\n";
@@ -191,6 +193,10 @@ ParseResult parse_runtime_options(int argc, char** argv)
                     std::stoi(require_value(i, argument));
             else if(argument == "--agipc-diagnostics")
                 options.agipc_diagnostics = true;
+            else if(argument == "--agipc-direction-freeze-path")
+                options.agipc_direction_freeze_path = require_value(i, argument);
+            else if(argument == "--agipc-direction-freeze-after-update")
+                options.agipc_direction_freeze_after_update = std::stoi(require_value(i, argument));
             else if(argument == "--agipc-self-test")
                 options.agipc_self_test = true;
             else
@@ -210,6 +216,14 @@ ParseResult parse_runtime_options(int argc, char** argv)
                        "paper-fig12-coupling-scaled, or paper-fig15-cloth-abd-scaled");
     const bool paper_mixed_scene = options.scene == "paper-fig12-coupling-scaled"
                                    || options.scene == "paper-fig15-cloth-abd-scaled";
+    if(options.agipc_direction_freeze_after_update < 0)
+        return invalid(options,"direction freeze update must be nonnegative");
+    if(options.agipc_direction_freeze_after_update > 0 && options.agipc_direction_freeze_path.empty())
+        return invalid(options,"direction freeze update requires a capture directory");
+    if(!options.agipc_direction_freeze_path.empty()
+       && (options.solver != SolverMode::AGIPC || !options.headless
+           || !options.frozen_linear_diagnostics_path.empty()))
+        return invalid(options,"direction freeze requires headless agipc-core without frozen-linear diagnostics");
     if(options.agipc_coarse_preconditioner != "block-jacobi"
        && options.agipc_coarse_preconditioner != "mas32")
         return invalid(options, "agipc-coarse-preconditioner must be block-jacobi or mas32");

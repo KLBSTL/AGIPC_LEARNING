@@ -37,6 +37,10 @@ void configure_galerkin(int fine_correction_max_iterations,
                         bool use_coarse_mas32 = false,
                         std::string mas_validation = "gpu",bool mas_reuse_enabled = false);
 bool galerkin_adoption_enabled();
+void configure_direction_freeze(std::string directory, std::size_t after_update);
+bool direction_freeze_complete();
+void freeze_accepted_direction(const GIPCTripletMatrix& fine_matrix,
+                               const double* fine_rhs, std::size_t fine_dofs);
 gipc::Json update_galerkin_shadow(const GIPCTripletMatrix& fine_matrix,
                                   const double* fine_rhs,
                                   std::size_t fine_rhs_dofs);

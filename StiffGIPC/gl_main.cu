@@ -1638,6 +1638,8 @@ void initScene()
                                   std::move(coarse_diagnostics_directory),
                                   runtime_options.agipc_coarse_preconditioner == "mas32",
                                   runtime_options.agipc_mas_validation,runtime_options.agipc_mas_reuse);
+        agipc::configure_direction_freeze(runtime_options.agipc_direction_freeze_path,
+                                          runtime_options.agipc_direction_freeze_after_update);
         agipc::initialize_criterion(tetMesh,runtime_options.agipc_threshold,
                                     runtime_options.agipc_max_levels);
     }

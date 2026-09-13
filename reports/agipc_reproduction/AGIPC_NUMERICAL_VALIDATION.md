@@ -1,5 +1,9 @@
 # AGIPC Numerical Validation
 
+## Latest: accepted fine-direction reference (2026-09-13)
+
+One selectively frozen update300/frame31 system passes independent fine/coarse FP64 SparseLU, real mixed/FEM Galerkin checks (errors≤1.08e-14), exact prolongation reconstruction and CPU/GPU residual agreement. GPU10 and CPU10 directions differ by6.22e-15. This validates the tested assembly/post-PCG calculation, **not direction quality or long-contact equivalence**: GPU10 has98.33% Euclidean/95.13% A-energy error versus fine direct and only9.50% predicted decrease. Exact coarse prolongation remains99.76% wrong; six affine groups cover98.35% of nodes/96.49% of squared error, with best subspace fit93.87% wrong. CPU20 remains93.73% wrong. All sampled FEM directions exceed the Newton threshold; premature stopping is not demonstrated. Keep performance/paper integration paused and trace giant-group criterion/protection/history. Detailed methods, aborted general-LU attempt, strict reference checks and limitations are in `AGIPC_ACCEPTED_DIRECTION_QUALITY.md`.
+
 Date: 2026-09-12. Build: Release, CUDA 13.0, `sm_86`, Visual Studio 2022. The executable supports the experimental `agipc-core` route; symmetric-Hessian and paper-BVH modes remain unavailable.
 
 ## Focused GPU gate

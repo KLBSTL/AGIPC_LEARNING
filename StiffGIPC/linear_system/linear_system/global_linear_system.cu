@@ -268,6 +268,8 @@ gipc::SizeT GlobalLinearSystem::solve_linear_system()
     if(measure_stages && !adopted)
         agipc::record_fallback_direction_quality(*gipc_global_triplet,
                                                  m_b.data(),m_x.data(),m_x.size());
+    if(adopted)
+        agipc::freeze_accepted_direction(*gipc_global_triplet,m_b.data(),m_x.size());
     return iter;
 }
 

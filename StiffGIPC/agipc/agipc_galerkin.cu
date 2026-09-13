@@ -78,6 +78,9 @@ struct GalerkinState
     std::string coarse_diagnostics_directory;
     std::array<bool,4> frozen_coarse_categories={false,false,false,false};
     gipc::Json frozen_coarse_samples=gipc::Json::array();
+    std::string direction_freeze_directory;
+    std::size_t direction_freeze_after_update=0;
+    bool direction_frozen=false;
 };
 
 GalerkinState state;
@@ -1028,6 +1031,65 @@ void configure_galerkin(int fine_correction_max_iterations,
 bool galerkin_adoption_enabled()
 {
     return state.adoption_enabled;
+}
+
+void configure_direction_freeze(std::string directory,std::size_t after_update)
+{
+    state.direction_freeze_directory=std::move(directory);
+    state.direction_freeze_after_update=after_update;
+    state.direction_frozen=false;
+}
+
+bool direction_freeze_complete() { return state.direction_frozen; }
+
+void freeze_accepted_direction(const GIPCTripletMatrix& matrix,
+                               const double* rhs,std::size_t dofs)
+{
+    if(state.direction_freeze_directory.empty() || state.direction_frozen
+       || state.updates<state.direction_freeze_after_update) return;
+    if(!state.last_adoption.value("adopted",false) || state.candidate_dofs!=dofs)
+        throw std::runtime_error("accepted direction capture has incompatible state");
+    const std::filesystem::path directory(state.direction_freeze_directory);
+    // Never overwrite an earlier frozen system with a different trajectory.
+    if(std::filesystem::exists(directory) && !std::filesystem::is_empty(directory))
+        throw std::runtime_error("direction capture directory must be empty");
+    std::filesystem::create_directories(directory);
+    const auto mapping=mapping_device_view();
+    const std::size_t unique=matrix.h_unique_key_number;
+    write_binary(directory/"fine_A_values.f64x9.bin",matrix.block_values(),unique);
+    write_binary(directory/"fine_A_rows.i32.bin",matrix.block_row_indices(),unique);
+    write_binary(directory/"fine_A_cols.i32.bin",matrix.block_col_indices(),unique);
+    write_binary(directory/"fine_rhs.f64.bin",rhs,dofs);
+    write_binary(directory/"agipc_candidate.f64.bin",state.fine_solution.data(),dofs);
+    write_binary(directory/"prolongated.f64.bin",state.prolonged.data(),dofs);
+    write_binary(directory/"fine_to_coarse.i32.bin",mapping.fine_to_coarse,mapping.fine_nodes);
+    write_binary(directory/"coarse_block_bases.i32.bin",mapping.coarse_block_bases,mapping.coarse_nodes);
+    write_binary(directory/"coarse_basis_masks.i32.bin",mapping.basis_masks,mapping.coarse_nodes);
+    write_binary(directory/"fine_rest_positions.f64x3.bin",mapping.rest_positions,mapping.fine_nodes);
+    const auto& coarse=*state.coarse_matrix;
+    const std::size_t coarse_unique=coarse.h_unique_key_number;
+    write_binary(directory/"coarse_A_values.f64x9.bin",coarse.block_values(),coarse_unique);
+    write_binary(directory/"coarse_A_rows.i32.bin",coarse.block_row_indices(),coarse_unique);
+    write_binary(directory/"coarse_A_cols.i32.bin",coarse.block_col_indices(),coarse_unique);
+    write_binary(directory/"coarse_rhs.f64.bin",state.coarse_rhs.data(),state.coarse_rhs.size());
+    write_binary(directory/"coarse_solution.f64.bin",state.coarse_solution.data(),state.coarse_solution.size());
+    const gipc::Json metadata={
+        {"format","agipc_accepted_direction_v1"},{"update_index",state.updates},
+        {"requested_after_update",state.direction_freeze_after_update},
+        {"fine_dofs",dofs},{"fine_block_nodes",matrix.block_rows()},
+        {"fine_unique_blocks",unique},{"fine_matrix_half_storage",true},
+        {"block_values_layout","Eigen column-major 3x3 FP64"},
+        {"mapping_fine_nodes",mapping.fine_nodes},{"mapping_coarse_nodes",mapping.coarse_nodes},
+        {"coarse_block_nodes",coarse.block_rows()},{"coarse_unique_blocks",coarse_unique},
+        {"coarse_solve",state.last["coarse_solve"]},
+        {"post_correction",state.last["post_correction"]},{"adoption",state.last_adoption},
+        {"coarse_preconditioner",state.use_coarse_mas32?"mas32":"block_jacobi"},
+        {"mas_validation",state.mas_validation},{"mas_reuse_enabled",state.mas_reuse_enabled},
+        {"stop_before_ccd_line_search_state_update",true},{"performance_claim",false}};
+    std::ofstream output(directory/"metadata.json");
+    output<<metadata.dump(2)<<'\n';output.close();
+    if(!output) throw std::runtime_error("failed to write direction capture metadata");
+    state.direction_frozen=true;
 }
 
 gipc::Json update_galerkin_shadow(const GIPCTripletMatrix& fine_matrix,

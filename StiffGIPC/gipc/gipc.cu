@@ -2,6 +2,7 @@
 #include <gipc/gipc.h>
 #include <gipc/utils/timer.h>
 #include <gipc/utils/json.h>
+#include <agipc/agipc_criterion.cuh>
 #include <filesystem>
 #include <fstream>
 
@@ -52,8 +53,9 @@ void GIPC::set_frozen_linear_diagnostics_path(const std::string& path)
 
 bool GIPC::frozen_linear_diagnostics_complete() const
 {
-    return m_global_linear_system
-           && m_global_linear_system->frozen_linear_diagnostics_complete();
+    return agipc::direction_freeze_complete()
+           || (m_global_linear_system
+               && m_global_linear_system->frozen_linear_diagnostics_complete());
 }
 
 void GIPC::init_abd_system()

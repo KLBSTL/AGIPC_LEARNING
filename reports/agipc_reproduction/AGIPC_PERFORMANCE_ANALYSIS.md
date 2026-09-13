@@ -1,5 +1,9 @@
 # AGIPC Performance Analysis
 
+## Numerical prerequisite update (2026-09-13)
+
+The full fine H/g freeze at update300/frame31 passes independent reference checks but exposes weak accepted-direction quality:98.33% Euclidean error and9.50% predicted quadratic decrease versus fine direct. Exact coarse solve changes almost nothing; six giant affine groups dominate node coverage/error and the best coarse-space Euclidean fit still has93.87% error. CPU20 does not resolve it. Prioritize criterion/protected-edge/history and merging diagnosis; preserve default post10 and paper threshold. No timing from the contended capture or CPU reference, and no higher-adoption count, establishes a speedup. See `AGIPC_ACCEPTED_DIRECTION_QUALITY.md`.
+
 Status: provisional reduced-scale evidence as of 2026-09-12. No paper-scale speedup has been reproduced.
 
 ## Reduced Figure 15 preflight

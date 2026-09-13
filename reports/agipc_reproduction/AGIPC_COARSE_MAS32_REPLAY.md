@@ -77,4 +77,4 @@ D:/computer/cmake/bin/cmake.exe --build S:/build-agipc-reproduction --config Rel
 
 首个小系统重放在析构时触发 `cudaFree invalid argument`，原因是新适配器创建 `GIPCTripletMatrix` 后遗漏 `init_var()`，导致析构释放未初始化指针。局部补上初始化后重新构建，上述两个重放与核心自检均通过；首次失败不作为 MAS 数值结论。
 
-27 帧残差保护复验、真实大型采样和粗层 MAS 场景对照仍待完成。显式 GPU 重放不进入模拟统计，也不能将 GPU 忙碌时的耗时用于速度比较。
+后续已完成 27 帧显式残差保护/采样诊断，并取得真实 1415/741 块粗系统，MAS32 重放均通过。详细结果、方向差与直接解复核见 `AGIPC_REAL_COARSE_MAS32_VALIDATION.md`。无显式诊断的 27 帧对照与粗层 MAS 场景对照仍待完成。显式 GPU 重放不进入模拟统计，也不能将 GPU 忙碌时的耗时用于速度比较。

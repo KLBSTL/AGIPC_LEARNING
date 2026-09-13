@@ -213,6 +213,12 @@ AGIPC 在这一次运行中更快，是因为减少了 83 次 Newton 更新，�
 
 257 块合成系统的迭代数由 47 降为 14，真实相对残差分别为 `9.431245e-4`、`9.428987e-4`，相对解析解方向差由 `0.3456%` 降为 `0.1798%`。真实小系统 Jacobi 一次、MAS32 两次，不能支持在小系统默认启用 MAS。当前 MAS 使用矩阵邻接、原粗块顺序和补齐节点，是中间适配；初始化与应用成本未计时，真实大型接触系统尚未验证，默认模拟仍使用 Jacobi。详细结果及失败修复见 `AGIPC_COARSE_MAS32_REPLAY.md`。
 
+### 5.11 真实粗系统 MAS32 与残差保护复验
+
+完成一次 27 帧显式诊断，残差保护恢复延拓方向 3 次，93 次尝试中采用 84 次，9 次回退均为粗 PCG 无效预条件残差；未出现后校正残差回退。顶点有限、地面穿透为零。与同阈值细层基线逐顶点比较，终态 RMS 差 `0.0004800351`，约占基线 RMS 位移 `0.1297%`。本次包含写盘与外部负载，不能作耗时对照。
+
+取得真实 1415/741 块粗系统，GPU Jacobi 121/78 次、MAS32 28/34 次，真实残差与全部局部 SPD 检查通过。MAS 与保存方向相差 6.4%/4.9%；独立稀疏直接解进一步显示，保存 Jacobi 解本身已有约 4.5% 方向误差。MAS 的二次下降量相对直接参考差距约 0.006%，但完整 MAS 向量误差仍待测量。详见 `AGIPC_REAL_COARSE_MAS32_VALIDATION.md`；默认粗层仍为 Jacobi。
+
 ## 6. 当前结论
 
 1. 稳定跨分组映射可以安全进入 Galerkin 路径，映射阶段不完整回退已在这三次 27 帧运行中消失。
@@ -221,14 +227,14 @@ AGIPC 在这一次运行中更快，是因为减少了 83 次 Newton 更新，�
 4. Newton 停止语义是此前比较中的重要混杂因素。统一阈值后，原始 StiffGIPC 也出现 101 步的第 27 帧长尾。
 5. 阶段计时表明粗层 PCG 是最大自适应单项；已采用路径上的细层预条件器重复构建也占到诊断仿真时间的 4.65%，现已通过延迟构建消除。
 6. 当前证据仍是非论文精确资产和单次运行，不能宣称已经复现论文的定量加速。
-7. 合成大型矩阵的 MAS32 迭代下降支持继续验证真实大型粗系统；它尚不能证明场景加速，也不足以替换默认粗预条件器。
+7. 真实中大型粗矩阵也出现 MAS32 迭代下降，且二次模型质量接近直接解；初始化/应用成本、完整方向误差和异常样本仍待验证，尚不足以替换默认粗预条件器。
 
 ## 7. 建议的下一步
 
 按信息收益和运行成本排序：
 
-1. GPU 空闲后复验 27 帧后校正残差保护，检查恢复次数、采用率和 Newton 尾部；
-2. 用已实现的显式采样取得中型、大型及达到迭代上限的粗系统，检查保存解的真实残差，再在同一 `Hc/gc` 上比较 block-Jacobi 与论文 MAS 粗层预条件器；
+1. 对已有真实冻结矩阵补充 MAS 完整方向精度与设置/求解成本诊断，并覆盖迭代上限及异常粗残差样本；
+2. GPU 空闲后做无显式诊断的 27 帧残差保护对照，再以显式实验选项验证粗层 MAS 的细层残差和非线性轨迹；
 3. 将逐次 CUDA event 改为低扰动累计计时后，仅对 AGIPC 与 paper-current 基线做三次交错重复，报告中位数和离散程度；
 4. 完成精确论文资产确认后，再开始 Figure 13/14/15 的定量复现。
 
@@ -253,6 +259,10 @@ AGIPC 在这一次运行中更快，是因为减少了 83 次 Newton 更新，�
 | GPU MAS32 小系统重放 | `perf_diag/agipc_coarse_mas32_small.json` |
 | GPU MAS32 合成 257 块重放 | `perf_diag/agipc_coarse_mas32_fixture257.json` |
 | GPU MAS32 结果与分析 | `reports/agipc_reproduction/AGIPC_COARSE_MAS32_REPLAY.md` |
+| 27 帧保护与真实粗系统采样 | `perf_diag/agipc_core_fig15_16k_guard_capture27.json` |
+| 真实粗系统 MAS32 验证报告 | `reports/agipc_reproduction/AGIPC_REAL_COARSE_MAS32_VALIDATION.md` |
+| 真实粗系统直接参考 | `perf_diag/agipc_guard_capture27_coarse_direct.json` |
+| 保护诊断逐顶点终态对照 | `perf_diag/agipc_guard_capture27_state_comparison.json` |
 | 方向质量运行 | `perf_diag/agipc_core_fig15_16k_direction_quality27.json` |
 | 方向质量逐 Newton 统计 | `perf_diag/agipc_core_fig15_16k_direction_quality27_stats.json` |
 | paper-current 基线 | `perf_diag/stiffgipc_fig15_16k_paper_stop27.json` |

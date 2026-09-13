@@ -9,6 +9,7 @@ from pathlib import Path
 
 import numpy as np
 from scipy import sparse
+from scipy.sparse.linalg import spsolve
 
 
 def read_array(path: Path, dtype, count: int) -> np.ndarray:
@@ -118,14 +119,14 @@ def metrics(matrix, rhs: np.ndarray, solution: np.ndarray) -> dict:
             "predicted_quadratic_decrease": float(rhs @ solution - 0.5 * solution @ product)}
 
 
-def replay(directory: Path) -> dict:
+def replay(directory: Path, direct_reference: bool = False) -> dict:
     metadata = json.loads((directory / "metadata.json").read_text(encoding="utf-8"))
     matrix, inverse, rhs, saved, minimum = load_system(directory, metadata)
     solve = metadata.get("coarse_solve", {})
     limit = int(solve.get("max_iterations", min(512, rhs.size)))
     tolerance = float(solve.get("relative_tolerance", 1e-3))
     solution, result = pcg(matrix, inverse, rhs, limit, tolerance)
-    return {"sample": directory.name,
+    report = {"sample": directory.name,
             "coarse_block_nodes": rhs.size // 3,
             "coarse_unique_blocks": metadata["coarse_unique_blocks"],
             "diagonal_minimum_eigenvalue": minimum,
@@ -136,6 +137,19 @@ def replay(directory: Path) -> dict:
                 float(np.linalg.norm(saved - solution))
                 / max(float(np.linalg.norm(saved)), np.finfo(np.float64).tiny),
             "relative_tolerance": tolerance, "max_iterations": limit}
+    if direct_reference:
+        exact = spsolve(matrix.tocsc(), rhs)
+        direct = metrics(matrix, rhs, exact)
+        if not np.isfinite(exact).all() or direct["relative_residual"] > 1e-10:
+            raise ValueError("sparse direct reference failed the true-residual gate")
+        exact_norm = max(float(np.linalg.norm(exact)), np.finfo(np.float64).tiny)
+        report["direct_reference"] = {
+            **direct, "method": "SciPy sparse LU; diagnostic only",
+            "saved_relative_direction_error": float(np.linalg.norm(saved - exact)) / exact_norm,
+            "cpu_relative_direction_error": float(np.linalg.norm(solution - exact)) / exact_norm,
+            "saved_norm_over_reference_norm": float(np.linalg.norm(saved)) / exact_norm,
+        }
+    return report
 
 
 def main() -> int:
@@ -143,13 +157,15 @@ def main() -> int:
     parser.add_argument("sample_root", type=Path)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--quiet", action="store_true")
+    parser.add_argument("--direct-reference", action="store_true",
+                        help="check an independent sparse direct solution (diagnostic only)")
     arguments = parser.parse_args()
     manifest = json.loads((arguments.sample_root / "manifest.json").read_text(encoding="utf-8"))
     # Compatibility with the earlier fallback snapshots, which also froze Hc/bc/dc.
     if manifest["format"] not in ("agipc_coarse_samples_v1", "agipc_fallback_direction_v1"):
         raise ValueError("unsupported snapshot manifest")
     report = {"format": "agipc_coarse_replay_v1",
-              "samples": [replay(arguments.sample_root / item["sample_name"])
+              "samples": [replay(arguments.sample_root / item["sample_name"], arguments.direct_reference)
                           for item in manifest["samples"]]}
     output = json.dumps(report, indent=2, allow_nan=False)
     if arguments.output:

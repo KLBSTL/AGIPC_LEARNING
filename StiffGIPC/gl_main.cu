@@ -2245,6 +2245,33 @@ int main(int argc, char** argv)
         std::cerr << "Requested AGIPC solver unavailable: symmetric Hessian and paper BVH stages are not implemented.\n";
         return 2;
     }
+    if(!runtime_options.agipc_coarse_replay_path.empty())
+    {
+        Init_CUDA();
+        try
+        {
+            const auto result=agipc::replay_coarse_snapshot(
+                runtime_options.agipc_coarse_replay_path);
+            if(!runtime_options.metrics_path.empty())
+            {
+                std::ofstream output;
+                output.exceptions(std::ios::badbit|std::ios::failbit);
+                const std::filesystem::path path(runtime_options.metrics_path);
+                if(!path.parent_path().empty())
+                    std::filesystem::create_directories(path.parent_path());
+                output.open(path);
+                output<<result.dump(2)<<'\n';
+                output.close();
+            }
+            std::cout<<result.dump(2)<<'\n';
+            return result.value("passed",false)?0:3;
+        }
+        catch(const std::exception& error)
+        {
+            std::cerr<<"Coarse replay failed: "<<error.what()<<'\n';
+            return 3;
+        }
+    }
     if(runtime_options.agipc_self_test)
     {
         Init_CUDA();

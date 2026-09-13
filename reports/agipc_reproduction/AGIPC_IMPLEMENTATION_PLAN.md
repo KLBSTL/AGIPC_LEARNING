@@ -119,6 +119,7 @@ Test rest tet `(0,0,0),(1,0,0),(0,1,0),(0,0,1)`; triangle uses first three point
 - [x] Freeze representative mild/moderate/severe post-residual fallbacks and independently compare prolonged, corrected and fine directions. The first divergent stage is post-correction selection; restore the prolongated direction when exact residual grows beyond `1e-6` relative tolerance.
 - [x] Analyze coarse-PCG distributions on both completed 27-frame stage-timed runs. Systems above 1,024 coarse blocks consume 65%--81% of coarse-solve time, and iteration count has greater than 0.99 correlation with solve time; large-system preconditioning is the next optimization target.
 - [x] Implement explicit diagnostic freezing for medium/large converged and iteration-cap coarse systems, with a CPU block-Jacobi replay tool validated on three existing small snapshots. Large captures and the post-guard 27-frame rerun await an idle GPU.
+- [x] Add standalone frozen coarse GPU Jacobi/MAS32 replay. Real 7-block and synthetic 257-block cases pass SpMV, local SPD and true-residual gates; synthetic iterations fall from 47 to 14. Keep this intermediate diagnostic out of default simulation dispatch until real large contact snapshots and setup/application costs are validated.
 - [ ] Strict diagnostics compute full gradient RMS and full-space displacement. Per-stage CUDA timing is implemented and has isolated coarse-PCG and unused fine-preconditioner costs; low-perturbation benchmark timing remains open.
 
 ## Task F: fine contact preservation

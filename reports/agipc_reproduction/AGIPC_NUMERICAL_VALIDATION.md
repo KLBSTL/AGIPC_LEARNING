@@ -150,3 +150,9 @@ The resulting Release build passes the complete AGIPC GPU self-test. A 16K one-f
 ## Coarse snapshot replay preparation
 
 The explicit diagnostic path now prepares one medium-converged (257--1024 blocks), one large-converged (>1024 blocks), and one iteration-cap coarse snapshot. `replay_frozen_coarse.py` independently rebuilds the symmetric half-storage coarse matrix and runs FP64 block-Jacobi PCG. On the three existing seven-block snapshots, all replays converge in one iteration and the maximum relative difference from the saved GPU coarse solution is `2.22e-16`. Large snapshots have not yet been collected. Details and the pending commands are in `AGIPC_COARSE_SNAPSHOT_PREPARATION.md`.
+
+## Frozen coarse GPU MAS32 replay, 2026-09-13
+
+The final Release build and both `--agipc-coarse-replay` inputs exit 0 with `passed=true`. The real seven-block snapshot uses 1 Jacobi iteration and 2 MAS32 iterations, with true relative residuals `6.57e-7` and `8.21e-9`. The deterministic 257-block rotated-chain SPD fixture uses 47 and 14 iterations, with residuals `9.431245e-4` and `9.428987e-4`. GPU/CPU SpMV errors are `4.32e-23` and `3.27e-16`; all 2/2 and 12/12 MAS local matrices and inverses pass SPD checks, and maximum inverse residuals are below `7.06e-7`. GPU Jacobi agrees with the independent CPU fixture replay. The fixture reference is analytic, not a saved real scene solution.
+
+The same executable passes `--agipc-self-test` (exit 0, overall true, mixed Galerkin error `8.75e-17`). Combining replay with `--solver agipc-paper` still exits 2 naming the unavailable stages. Exact commands, JSON paths, the adapter initialization fix and limitations are recorded in `AGIPC_COARSE_MAS32_REPLAY.md`. No large real contact snapshot or post-guard 27-frame validation is claimed.

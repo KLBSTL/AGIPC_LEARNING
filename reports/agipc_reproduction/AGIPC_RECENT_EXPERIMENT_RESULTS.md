@@ -207,6 +207,12 @@ AGIPC 在这一次运行中更快，是因为减少了 83 次 Newton 更新，�
 
 新增 `replay_frozen_coarse.py` 独立重放 block-Jacobi PCG；对之前三个 7 块样本均一次迭代收敛，CPU 与保存 GPU 粗解最大相对方向差为 `2.22e-16`。GPU 仍被占用，尚未取得大型样本。使用命令和验证边界见 `AGIPC_COARSE_SNAPSHOT_PREPARATION.md`。
 
+### 5.10 冻结粗系统 GPU MAS32 重放
+
+2026-09-13 新增独立 `--agipc-coarse-replay` 入口，固定同一粗矩阵、零初值和 `1e-3` 残差目标，比较 block-Jacobi 与已有 Traditional GPU MAS32。真实 7 块样本和确定性 257 块合成矩阵均通过 GPU/CPU SpMV、局部矩阵及逆 SPD、真实残差与下降检查；核心 GPU 自检也通过。
+
+257 块合成系统的迭代数由 47 降为 14，真实相对残差分别为 `9.431245e-4`、`9.428987e-4`，相对解析解方向差由 `0.3456%` 降为 `0.1798%`。真实小系统 Jacobi 一次、MAS32 两次，不能支持在小系统默认启用 MAS。当前 MAS 使用矩阵邻接、原粗块顺序和补齐节点，是中间适配；初始化与应用成本未计时，真实大型接触系统尚未验证，默认模拟仍使用 Jacobi。详细结果及失败修复见 `AGIPC_COARSE_MAS32_REPLAY.md`。
+
 ## 6. 当前结论
 
 1. 稳定跨分组映射可以安全进入 Galerkin 路径，映射阶段不完整回退已在这三次 27 帧运行中消失。
@@ -215,6 +221,7 @@ AGIPC 在这一次运行中更快，是因为减少了 83 次 Newton 更新，�
 4. Newton 停止语义是此前比较中的重要混杂因素。统一阈值后，原始 StiffGIPC 也出现 101 步的第 27 帧长尾。
 5. 阶段计时表明粗层 PCG 是最大自适应单项；已采用路径上的细层预条件器重复构建也占到诊断仿真时间的 4.65%，现已通过延迟构建消除。
 6. 当前证据仍是非论文精确资产和单次运行，不能宣称已经复现论文的定量加速。
+7. 合成大型矩阵的 MAS32 迭代下降支持继续验证真实大型粗系统；它尚不能证明场景加速，也不足以替换默认粗预条件器。
 
 ## 7. 建议的下一步
 
@@ -243,6 +250,9 @@ AGIPC 在这一次运行中更快，是因为减少了 83 次 Newton 更新，�
 | 粗层 PCG 分析报告 | `reports/agipc_reproduction/AGIPC_COARSE_PCG_ANALYSIS.md` |
 | 粗系统采样与重放准备 | `reports/agipc_reproduction/AGIPC_COARSE_SNAPSHOT_PREPARATION.md` |
 | 已有小型粗系统重放 | `perf_diag/agipc_coarse_replay_small.json` |
+| GPU MAS32 小系统重放 | `perf_diag/agipc_coarse_mas32_small.json` |
+| GPU MAS32 合成 257 块重放 | `perf_diag/agipc_coarse_mas32_fixture257.json` |
+| GPU MAS32 结果与分析 | `reports/agipc_reproduction/AGIPC_COARSE_MAS32_REPLAY.md` |
 | 方向质量运行 | `perf_diag/agipc_core_fig15_16k_direction_quality27.json` |
 | 方向质量逐 Newton 统计 | `perf_diag/agipc_core_fig15_16k_direction_quality27_stats.json` |
 | paper-current 基线 | `perf_diag/stiffgipc_fig15_16k_paper_stop27.json` |

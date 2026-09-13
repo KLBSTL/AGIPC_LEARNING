@@ -36,6 +36,7 @@ std::string runtime_options_help()
            "  --figure12-linear-system-buffer-scale <VALUE>\n"
            "  --spmv-self-test\n"
            "  --mas32-self-test\n"
+           "  --agipc-coarse-replay <SAMPLE_DIRECTORY>\n"
            "  --frozen-linear-diagnostics <JSON_PATH>\n"
            "  --frames <N>\n"
            "  --young-modulus <VALUE>\n"
@@ -140,6 +141,8 @@ ParseResult parse_runtime_options(int argc, char** argv)
                 options.spmv_self_test = true;
             else if(argument == "--mas32-self-test")
                 options.mas32_self_test = true;
+            else if(argument == "--agipc-coarse-replay")
+                options.agipc_coarse_replay_path = require_value(i, argument);
             else if(argument == "--frozen-linear-diagnostics")
                 options.frozen_linear_diagnostics_path = require_value(i, argument);
             else if(argument == "--figure12-bunny-count")

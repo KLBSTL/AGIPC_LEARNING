@@ -49,4 +49,5 @@ gipc::Json galerkin_summary();
 gipc::Json criterion_self_test();
 gipc::Json mapping_self_test();
 gipc::Json galerkin_self_test();
+gipc::Json replay_coarse_snapshot(const std::string& sample_directory);
 }

@@ -119,7 +119,7 @@ def metrics(matrix, rhs: np.ndarray, solution: np.ndarray) -> dict:
             "predicted_quadratic_decrease": float(rhs @ solution - 0.5 * solution @ product)}
 
 
-def replay(directory: Path, direct_reference: bool = False) -> dict:
+def replay(directory: Path, direct_reference: bool = False, gpu_replay: dict | None = None) -> dict:
     metadata = json.loads((directory / "metadata.json").read_text(encoding="utf-8"))
     matrix, inverse, rhs, saved, minimum = load_system(directory, metadata)
     solve = metadata.get("coarse_solve", {})
@@ -149,6 +149,41 @@ def replay(directory: Path, direct_reference: bool = False) -> dict:
             "cpu_relative_direction_error": float(np.linalg.norm(solution - exact)) / exact_norm,
             "saved_norm_over_reference_norm": float(np.linalg.norm(saved)) / exact_norm,
         }
+        if gpu_replay is not None:
+            if int(gpu_replay["coarse_block_nodes"]) != rhs.size // 3:
+                raise ValueError("GPU replay vector dimension mismatch")
+            report["gpu_vectors"] = {}
+            for name in ("block_jacobi", "mas32"):
+                solve = gpu_replay[name]
+                vector = np.asarray(solve["solution_f64"], dtype=np.float64)
+                if vector.shape != rhs.shape or not np.isfinite(vector).all():
+                    raise ValueError("invalid GPU replay solution vector")
+                independent = metrics(matrix, rhs, vector)
+                if not solve["passed"] or independent["relative_residual"] > tolerance * (1 + 1e-6):
+                    raise ValueError("GPU replay vector failed independent true-residual gate")
+                if abs(independent["relative_residual"] - solve["true_relative_residual"]) > 1e-10:
+                    raise ValueError("GPU reported and independent true residuals disagree")
+                error = vector - exact
+                energy = float(error @ (matrix @ error))
+                reference_energy = float(exact @ (matrix @ exact))
+                if energy < 0 or reference_energy < 0:
+                    raise ValueError("negative quadratic form in direct-reference comparison")
+                cosine = float(vector @ exact) / max(float(np.linalg.norm(vector)) * exact_norm,
+                                                     np.finfo(np.float64).tiny)
+                report["gpu_vectors"][name] = {
+                    **independent, "iterations": solve["iterations"],
+                    "relative_direction_error": float(np.linalg.norm(error)) / exact_norm,
+                    "angle_to_direct_degrees": float(np.degrees(np.arccos(np.clip(cosine, -1, 1))))
+                    if np.linalg.norm(exact) else 0.0,
+                    "a_weighted_relative_error": float(np.sqrt(energy / max(reference_energy,
+                                                                             np.finfo(np.float64).tiny))),
+                    "relative_quadratic_decrease_gap": 1 - independent["predicted_quadratic_decrease"]
+                    / max(direct["predicted_quadratic_decrease"], np.finfo(np.float64).tiny),
+                    "independently_passed": True,
+                }
+            report["gpu_setup_timing"] = gpu_replay["setup_timing"]
+            report["gpu_pcg_timing"] = {name: gpu_replay[name]["pcg_timing"]
+                                        for name in ("block_jacobi", "mas32")}
     return report
 
 
@@ -159,14 +194,28 @@ def main() -> int:
     parser.add_argument("--quiet", action="store_true")
     parser.add_argument("--direct-reference", action="store_true",
                         help="check an independent sparse direct solution (diagnostic only)")
+    parser.add_argument("--gpu-replay", type=Path, action="append", default=[],
+                        help="compare exported GPU vectors to the direct reference; repeat per sample")
     arguments = parser.parse_args()
+    if arguments.gpu_replay and not arguments.direct_reference:
+        parser.error("--gpu-replay requires --direct-reference")
+    gpu_replays = {}
+    for path in arguments.gpu_replay:
+        result = json.loads(path.read_text(encoding="utf-8"))
+        sample = Path(result["sample_directory"]).name
+        if sample in gpu_replays:
+            parser.error(f"duplicate GPU replay for {sample}")
+        gpu_replays[sample] = result
     manifest = json.loads((arguments.sample_root / "manifest.json").read_text(encoding="utf-8"))
     # Compatibility with the earlier fallback snapshots, which also froze Hc/bc/dc.
     if manifest["format"] not in ("agipc_coarse_samples_v1", "agipc_fallback_direction_v1"):
         raise ValueError("unsupported snapshot manifest")
     report = {"format": "agipc_coarse_replay_v1",
-              "samples": [replay(arguments.sample_root / item["sample_name"], arguments.direct_reference)
+              "samples": [replay(arguments.sample_root / item["sample_name"], arguments.direct_reference,
+                                 gpu_replays.get(Path(item["sample_name"]).name))
                           for item in manifest["samples"]]}
+    if gpu_replays.keys() - {sample["sample"] for sample in report["samples"]}:
+        parser.error("GPU replay does not match a manifest sample")
     output = json.dumps(report, indent=2, allow_nan=False)
     if arguments.output:
         arguments.output.write_text(output + "\n", encoding="utf-8")

@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <limits>
@@ -20,6 +21,32 @@ namespace agipc
 namespace
 {
 constexpr int kReplayThreads=256;
+
+// CUDA event elapsed time includes host launch gaps and external GPU contention.
+// These single-run diagnostics are not benchmark timings.
+struct ReplayTimer
+{
+    cudaEvent_t begin=nullptr,end=nullptr;
+    std::chrono::steady_clock::time_point wall_begin;
+    ReplayTimer()
+    {
+        CUDA_SAFE_CALL(cudaEventCreate(&begin));
+        CUDA_SAFE_CALL(cudaEventCreate(&end));
+        CUDA_SAFE_CALL(cudaEventRecord(begin));
+        wall_begin=std::chrono::steady_clock::now();
+    }
+    gipc::Json finish()
+    {
+        CUDA_SAFE_CALL(cudaEventRecord(end));
+        CUDA_SAFE_CALL(cudaEventSynchronize(end));
+        float elapsed=0;
+        CUDA_SAFE_CALL(cudaEventElapsedTime(&elapsed,begin,end));
+        const double wall=std::chrono::duration<double,std::milli>(
+            std::chrono::steady_clock::now()-wall_begin).count();
+        return {{"cuda_event_elapsed_ms",elapsed},{"wall_ms",wall}};
+    }
+    ~ReplayTimer() { if(begin) cudaEventDestroy(begin); if(end) cudaEventDestroy(end); }
+};
 
 template <typename T>
 std::vector<T> read_binary(const std::filesystem::path& path,std::size_t count)
@@ -92,12 +119,13 @@ struct ReplayBuffers
 
 template <typename Apply>
 gipc::Json run_replay_pcg(GIPCTripletMatrix& matrix,const double* rhs,
-                          const std::vector<double>& reference,int limit,Apply apply)
+                          const std::vector<double>& reference,int real_blocks,int limit,Apply apply)
 {
     const int dofs=3*matrix.block_rows();
     ReplayBuffers work(dofs);
     work.x.reset_zero();
     CUDA_SAFE_CALL(cudaMemcpy(work.r.data(),rhs,dofs*sizeof(double),cudaMemcpyDeviceToDevice));
+    ReplayTimer timer;
     apply(work.r.data(),work.z.data());
     CUDA_SAFE_CALL(cudaMemcpy(work.p.data(),work.z.data(),dofs*sizeof(double),cudaMemcpyDeviceToDevice));
     const double initial2=replay_dot(rhs,rhs,dofs);
@@ -128,6 +156,7 @@ gipc::Json run_replay_pcg(GIPCTripletMatrix& matrix,const double* rhs,
     }
     const bool recursive_converged=residual2<=1e-6*initial2;
     if(!recursive_converged && failure.empty()) failure="iteration_cap";
+    const auto timing=timer.finish();
     replay_spmv(matrix,work.x.data(),work.ap.data());
     replay_residual<<<(dofs+kReplayThreads-1)/kReplayThreads,kReplayThreads>>>(
         rhs,work.ap.data(),work.r.data(),dofs);
@@ -139,12 +168,17 @@ gipc::Json run_replay_pcg(GIPCTripletMatrix& matrix,const double* rhs,
     double difference2=0,reference2=0;
     for(int i=0;i<dofs;++i)
     { difference2+=(solution[i]-reference[i])*(solution[i]-reference[i]); reference2+=reference[i]*reference[i]; }
+    double padding2=0;
+    for(int i=3*real_blocks;i<dofs;++i) padding2+=solution[i]*solution[i];
+    solution.resize(3*real_blocks);
     const double relative=initial2>0?std::sqrt(true2/initial2):std::sqrt(true2);
     return {{"iterations",iterations},{"max_iterations",limit},{"relative_tolerance",1e-3},
         {"recursive_converged",recursive_converged},{"failure_reason",failure},
         {"recursive_relative_residual",initial2>0?std::sqrt(residual2/initial2):0.0},
         {"true_relative_residual",relative},{"rhs_dot_direction",rhs_dot},
         {"predicted_quadratic_decrease",rhs_dot-0.5*quadratic},
+        {"pcg_timing",timing},{"solution_f64",solution},
+        {"padding_solution_norm",std::sqrt(padding2)},
         {"reference_relative_direction_difference",std::sqrt(difference2/std::max(reference2,1e-300))},
         {"passed",failure.empty() && std::isfinite(relative)
             && relative<=1e-3*(1.0+1e-6) && std::isfinite(quadratic)
@@ -198,6 +232,7 @@ gipc::Json replay_coarse_snapshot(const std::string& sample_directory)
     for(int i=0;i<3*blocks;++i)
         if(!std::isfinite(rhs[i]) || !std::isfinite(reference[i]))
             throw std::runtime_error("Nonfinite coarse RHS or reference solution");
+    ReplayTimer jacobi_setup_timer;
     std::vector<Eigen::Matrix3d> inverse(padded);
     for(int i=0;i<padded;++i)
     {
@@ -208,6 +243,9 @@ gipc::Json replay_coarse_snapshot(const std::string& sample_directory)
             throw std::runtime_error("Coarse block-Jacobi diagonal is not SPD");
         inverse[i]=llt.solve(Eigen::Matrix3d::Identity());
     }
+    cudatool::CudaDeviceBuffer<Eigen::Matrix3d> device_inverse;
+    device_inverse.copy_from_host(inverse);
+    const auto jacobi_setup_timing=jacobi_setup_timer.finish();
     GIPCTripletMatrix matrix;
     matrix.init_var();
     matrix.reshape(padded,padded);
@@ -216,9 +254,8 @@ gipc::Json replay_coarse_snapshot(const std::string& sample_directory)
     matrix.m_block_col_indices.copy_from_host(cols);
     matrix.h_unique_key_number=static_cast<int>(values.size());
     cudatool::CudaDeviceBuffer<double> device_rhs,device_reference,device_ax;
-    cudatool::CudaDeviceBuffer<Eigen::Matrix3d> device_inverse;
     device_rhs.copy_from_host(rhs); device_reference.copy_from_host(reference);
-    device_inverse.copy_from_host(inverse); device_ax.resize(rhs.size());
+    device_ax.resize(rhs.size());
     replay_spmv(matrix,device_reference.data(),device_ax.data());
     std::vector<double> gpu_ax,cpu_ax(rhs.size(),0.0);
     device_ax.copy_to_host(gpu_ax);
@@ -238,11 +275,12 @@ gipc::Json replay_coarse_snapshot(const std::string& sample_directory)
     for(std::size_t i=0;i<rhs.size();++i)
     { error2+=(gpu_ax[i]-cpu_ax[i])*(gpu_ax[i]-cpu_ax[i]); norm2+=cpu_ax[i]*cpu_ax[i]; }
     const double spmv_error=std::sqrt(error2/std::max(norm2,1e-300));
-    const auto jacobi=run_replay_pcg(matrix,device_rhs.data(),reference,iteration_cap,
+    const auto jacobi=run_replay_pcg(matrix,device_rhs.data(),reference,blocks,iteration_cap,
         [&](const double* r,double* z) {
             replay_apply_diagonal<<<(padded+kReplayThreads-1)/kReplayThreads,kReplayThreads>>>(
                 device_inverse.data(),r,z,padded);
         });
+    ReplayTimer mas_setup_timer;
     std::vector<unsigned int> neighbors,starts(padded),counts(padded);
     std::vector<int> identity(padded);
     std::iota(identity.begin(),identity.end(),0);
@@ -270,6 +308,7 @@ gipc::Json replay_coarse_snapshot(const std::string& sample_directory)
     device_indices.copy_from_host(indices);
     mas.value.setPreconditioner_bcoo(matrix.block_values(),matrix.block_row_indices(),
         matrix.block_col_indices(),device_indices.data(),0,values.size(),0);
+    const auto mas_setup_timing=mas_setup_timer.finish();
     cudatool::CudaDeviceBuffer<double> initial_z;
     initial_z.resize(rhs.size());
     mas.value.preconditioning(reinterpret_cast<const double3*>(device_rhs.data()),
@@ -278,7 +317,7 @@ gipc::Json replay_coarse_snapshot(const std::string& sample_directory)
         reinterpret_cast<const double3*>(device_rhs.data()));
     gipc::Json mas_solve={{"passed",false},{"failure_reason","invalid_local_mas_blocks"}};
     if(diagnostics.value("passed",false))
-        mas_solve=run_replay_pcg(matrix,device_rhs.data(),reference,iteration_cap,
+        mas_solve=run_replay_pcg(matrix,device_rhs.data(),reference,blocks,iteration_cap,
             [&](const double* r,double* z) {
                 mas.value.preconditioning(reinterpret_cast<const double3*>(r),reinterpret_cast<double3*>(z));
             });
@@ -289,6 +328,9 @@ gipc::Json replay_coarse_snapshot(const std::string& sample_directory)
         {"mas_scope","Traditional MAS32; matrix-pattern graph; diagnostic intermediate"},
         {"precision","FP64 matrix/PCG; existing MAS FP32 local inverse"},
         {"relative_spmv_error",spmv_error},{"block_jacobi",jacobi},
+        {"setup_timing",{{"block_jacobi",jacobi_setup_timing},{"mas32",mas_setup_timing}}},
+        {"timing_scope","diagnostic single run; setup then PCG; validation and vector serialization excluded"},
+        {"solution_scope","original coarse blocks only; FP64 xyz block order"},
         {"mas32_local_diagnostics",diagnostics},{"mas32",mas_solve},
         {"passed",std::isfinite(spmv_error) && spmv_error<=1e-12
             && jacobi.value("passed",false) && mas_solve.value("passed",false)},

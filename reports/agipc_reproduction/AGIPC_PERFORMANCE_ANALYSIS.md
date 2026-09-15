@@ -4,6 +4,8 @@
 
 The full fine H/g freeze at update300/frame31 passes independent reference checks but exposes weak accepted-direction quality:98.33% Euclidean error and9.50% predicted quadratic decrease versus fine direct. Exact coarse solve changes almost nothing; six giant affine groups dominate node coverage/error and the best coarse-space Euclidean fit still has93.87% error. CPU20 does not resolve it. Prioritize criterion/protected-edge/history and merging diagnosis; preserve default post10 and paper threshold. No timing from the contended capture or CPU reference, and no higher-adoption count, establishes a speedup. See `AGIPC_ACCEPTED_DIRECTION_QUALITY.md`.
 
+The 2026-09-15 performance-environment audit also fails the controlled-timing gate: a10-second idle probe reports10%--63% GPU utilization (median29%),18% median memory activity, P5/P8 transitions and300--450MHz graphics clocks, with unowned WDDM/compute processes. The new checkpoint pair is instrumented, follows different Newton trajectories and uses scaled assets, so all of its timing is excluded. It does establish the numerical branch location: frame27 Newton2/update56 is the first tag/mapping mismatch, and frame35 Jacobi/MAS state difference is2.13368%. See `AGIPC_FRAME_CHECKPOINT_DIVERGENCE.md`.
+
 Status: provisional reduced-scale evidence as of 2026-09-12. No paper-scale speedup has been reproduced.
 
 ## Reduced Figure 15 preflight

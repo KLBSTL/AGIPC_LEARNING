@@ -44,6 +44,9 @@ std::string runtime_options_help()
            "  --headless\n"
            "  --metrics-path <JSON_PATH>\n"
            "  --fem-final-state-path <CSV_PATH>\n"
+           "  --fem-checkpoint-path <BINARY_PATH>\n"
+           "  --fem-checkpoint-start-frame <N>\n"
+           "  --fem-checkpoint-stride <N>\n"
            "  --agipc-threshold <VALUE>\n"
            "  --agipc-mapping matching|warp-hash\n"
            "  --agipc-max-levels <N>\n"
@@ -176,6 +179,12 @@ ParseResult parse_runtime_options(int argc, char** argv)
                 options.metrics_path = require_value(i, argument);
             else if(argument == "--fem-final-state-path")
                 options.fem_final_state_path = require_value(i, argument);
+            else if(argument == "--fem-checkpoint-path")
+                options.fem_checkpoint_path = require_value(i, argument);
+            else if(argument == "--fem-checkpoint-start-frame")
+                options.fem_checkpoint_start_frame = std::stoi(require_value(i, argument));
+            else if(argument == "--fem-checkpoint-stride")
+                options.fem_checkpoint_stride = std::stoi(require_value(i, argument));
             else if(argument == "--agipc-threshold")
                 options.agipc_threshold = std::stod(require_value(i, argument));
             else if(argument == "--agipc-mapping")
@@ -224,6 +233,12 @@ ParseResult parse_runtime_options(int argc, char** argv)
        && (options.solver != SolverMode::AGIPC || !options.headless
            || !options.frozen_linear_diagnostics_path.empty()))
         return invalid(options,"direction freeze requires headless agipc-core without frozen-linear diagnostics");
+    if(!options.fem_checkpoint_path.empty()
+       && (!options.headless || !options.agipc_direction_freeze_path.empty()
+           || !options.frozen_linear_diagnostics_path.empty()))
+        return invalid(options,"FEM checkpoints require a complete headless run without frozen diagnostics");
+    if(options.fem_checkpoint_start_frame < 1 || options.fem_checkpoint_stride < 1)
+        return invalid(options,"FEM checkpoint start frame and stride must be positive");
     if(options.agipc_coarse_preconditioner != "block-jacobi"
        && options.agipc_coarse_preconditioner != "mas32")
         return invalid(options, "agipc-coarse-preconditioner must be block-jacobi or mas32");

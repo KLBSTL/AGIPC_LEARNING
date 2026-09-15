@@ -1860,6 +1860,17 @@ int run_headless()
     const auto wall_begin = std::chrono::steady_clock::now();
     init_headless();
     const auto initial_vertices = tetMesh.vertexes;
+    const size_t checkpoint_fem_offset=tetMesh.abd_vertexOffset;
+    const size_t checkpoint_fem_vertices=tetMesh.vertexes.size()-checkpoint_fem_offset;
+    const bool capture_checkpoints=!runtime_options.fem_checkpoint_path.empty();
+    std::vector<double3> checkpoint_positions;
+    gipc::Json checkpoint_frames=gipc::Json::array();
+    if(capture_checkpoints)
+        checkpoint_positions.insert(checkpoint_positions.end(),
+                                    initial_vertices.begin()+checkpoint_fem_offset,
+                                    initial_vertices.end());
+    int checkpoint_previous_newton=totalNT;
+    double checkpoint_previous_pcg=total_Cg_count;
     const auto simulation_begin = std::chrono::steady_clock::now();
 
     for(int frame = 0; frame < runtime_options.frames; ++frame)
@@ -1870,6 +1881,26 @@ int run_headless()
         // headless metrics path with that deliberately incomplete frame.
         if(ipc.frozen_linear_diagnostics_complete())
             return 0;
+        if(capture_checkpoints
+           && total_Frames>=runtime_options.fem_checkpoint_start_frame
+           && (total_Frames-runtime_options.fem_checkpoint_start_frame)
+                  %runtime_options.fem_checkpoint_stride==0)
+        {
+            const size_t old_size=checkpoint_positions.size();
+            checkpoint_positions.resize(old_size+checkpoint_fem_vertices);
+            CUDA_SAFE_CALL(cudaMemcpy(checkpoint_positions.data()+old_size,
+                                      ipc._vertexes+checkpoint_fem_offset,
+                                      checkpoint_fem_vertices*sizeof(double3),
+                                      cudaMemcpyDeviceToHost));
+            checkpoint_frames.push_back({
+                {"frame",total_Frames},
+                {"newton_iterations",totalNT-checkpoint_previous_newton},
+                {"pcg_iterations",total_Cg_count-checkpoint_previous_pcg},
+                {"last_self_collision_pairs",ipc.h_cpNum[0]},
+                {"last_ground_collision_pairs",ipc.h_gpNum}});
+        }
+        checkpoint_previous_newton=totalNT;
+        checkpoint_previous_pcg=total_Cg_count;
     }
 
     CUDA_SAFE_CALL(cudaDeviceSynchronize());
@@ -2034,6 +2065,49 @@ int run_headless()
             fem_position_sum.z/fem_vertex_count};
     }
     metrics["abd_maximum_displacement"] = std::sqrt(abd_max_displacement2);
+    if(capture_checkpoints)
+    {
+        const std::filesystem::path checkpoint_path(runtime_options.fem_checkpoint_path);
+        if(!checkpoint_path.parent_path().empty())
+            std::filesystem::create_directories(checkpoint_path.parent_path());
+        std::ofstream binary(checkpoint_path,std::ios::binary|std::ios::trunc);
+        binary.write(reinterpret_cast<const char*>(checkpoint_positions.data()),
+                     static_cast<std::streamsize>(checkpoint_positions.size()*sizeof(double3)));
+        if(!binary)
+        {
+            std::cerr << "failed to write FEM checkpoints: " << checkpoint_path << '\n';
+            return 3;
+        }
+        binary.close();
+        std::vector<int> record_frames={0};
+        for(const auto& frame:checkpoint_frames)
+            record_frames.push_back(frame.at("frame").get<int>());
+        gipc::Json descriptor={
+            {"format","fem_frame_checkpoints_f64x3_v1"},
+            {"binary_file",checkpoint_path.filename().string()},
+            {"binary_path",checkpoint_path.string()},
+            {"layout","record_frame_vertex_xyz"},
+            {"record_frame_ids",record_frames},
+            {"initial_state_record",0},
+            {"fem_vertices",checkpoint_fem_vertices},
+            {"records",record_frames.size()},
+            {"bytes",checkpoint_positions.size()*sizeof(double3)},
+            {"start_frame",runtime_options.fem_checkpoint_start_frame},
+            {"stride",runtime_options.fem_checkpoint_stride},
+            {"frames",checkpoint_frames},
+            {"performance_claim",false}};
+        auto manifest_path=checkpoint_path;
+        manifest_path.replace_extension(".json");
+        std::ofstream manifest(manifest_path,std::ios::trunc);
+        manifest<<descriptor.dump(2)<<'\n';
+        if(!manifest)
+        {
+            std::cerr << "failed to write FEM checkpoint manifest: " << manifest_path << '\n';
+            return 3;
+        }
+        descriptor["manifest_path"]=manifest_path.string();
+        metrics["fem_checkpoints"]=std::move(descriptor);
+    }
     if(!runtime_options.fem_final_state_path.empty())
     {
         const std::filesystem::path final_state_path(runtime_options.fem_final_state_path);

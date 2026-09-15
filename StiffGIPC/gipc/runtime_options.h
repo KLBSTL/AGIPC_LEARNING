@@ -33,6 +33,9 @@ struct RuntimeOptions
     bool        headless      = false;
     std::string metrics_path;
     std::string fem_final_state_path;
+    std::string fem_checkpoint_path;
+    int         fem_checkpoint_start_frame = 1;
+    int         fem_checkpoint_stride = 1;
     double      agipc_threshold = 5e-5;
     std::string agipc_mapping   = "warp-hash";
     int         agipc_max_levels = 16;

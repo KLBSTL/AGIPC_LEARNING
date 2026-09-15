@@ -29,6 +29,7 @@ void initialize_criterion(const tetrahedra_obj& mesh, double threshold, int max_
 void begin_criterion_step(device_TetraData& mesh);
 gipc::Json update_criterion(device_TetraData& mesh);
 gipc::Json update_mapping();
+gipc::Json capture_criterion_snapshot(const std::string& directory);
 MappingDeviceView mapping_device_view();
 void configure_galerkin(int fine_correction_max_iterations,
                         bool adoption_enabled,

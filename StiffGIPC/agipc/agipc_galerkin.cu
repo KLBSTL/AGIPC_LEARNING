@@ -1073,6 +1073,7 @@ void freeze_accepted_direction(const GIPCTripletMatrix& matrix,
     write_binary(directory/"coarse_A_cols.i32.bin",coarse.block_col_indices(),coarse_unique);
     write_binary(directory/"coarse_rhs.f64.bin",state.coarse_rhs.data(),state.coarse_rhs.size());
     write_binary(directory/"coarse_solution.f64.bin",state.coarse_solution.data(),state.coarse_solution.size());
+    const auto criterion_snapshot=capture_criterion_snapshot(directory.string());
     const gipc::Json metadata={
         {"format","agipc_accepted_direction_v1"},{"update_index",state.updates},
         {"requested_after_update",state.direction_freeze_after_update},
@@ -1085,6 +1086,7 @@ void freeze_accepted_direction(const GIPCTripletMatrix& matrix,
         {"post_correction",state.last["post_correction"]},{"adoption",state.last_adoption},
         {"coarse_preconditioner",state.use_coarse_mas32?"mas32":"block_jacobi"},
         {"mas_validation",state.mas_validation},{"mas_reuse_enabled",state.mas_reuse_enabled},
+        {"criterion_snapshot",criterion_snapshot},
         {"stop_before_ccd_line_search_state_update",true},{"performance_claim",false}};
     std::ofstream output(directory/"metadata.json");
     output<<metadata.dump(2)<<'\n';output.close();

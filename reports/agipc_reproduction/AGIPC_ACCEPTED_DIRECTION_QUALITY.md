@@ -117,3 +117,9 @@ Release 构建 exit0；核心自检 exit0、`passed=true`。可执行文件 SHA-
 - 后续用少量稀疏状态检查点定位 Jacobi/MAS 的首次非线性分叉；新局部诊断失败类别的实际触发和失败矩阵 CPU/GPU 对照仍待验证。
 
 完整数值与逐文件哈希：`perf_diag/agipc_direction_quality_contact300_analysis.json`；组分布/停止敏感性：`perf_diag/agipc_direction_quality_contact300_stop_and_mapping.json`。这些诊断产物不纳入 Git。
+
+## 判据追踪后续结果（2026-09-15）
+
+后续一次显式判据快照已独立重建当前 Green 张量并逐边回放原因位/标签，Green 相对误差 `8.20e-15`、边标签零不一致。默认阈值下的允许边图本身包含 14,379 节点的全局连通分量，因此没有证据把上一样本的大组归因于 Green 或标签计算错误。运行时 32-lane 递归映射在自适应标签下停于更细的局部稳定分区；强行按全局连通分量合并反而提高保存直接方向的最佳拟合误差。
+
+后续捕获的 H/g 与本报告样本哈希不同，方向误差也从 98.33% 变为 87.55%。相同 update300 不是跨运行确定性状态，不能直接配对比较。完整判据、映射与阈值分析见 `AGIPC_CRITERION_SNAPSHOT_ANALYSIS.md`；下一步改为同一运行内的稀疏状态检查点。

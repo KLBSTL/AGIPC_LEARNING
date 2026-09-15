@@ -6,6 +6,9 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <limits>
 #include <map>
 #include <stdexcept>
@@ -60,8 +63,29 @@ struct Workspace
     double increment_max = 0, increment_sum = 0;
     size_t increment_samples = 0;
     gipc::Json last_mapping = nullptr;
+    gipc::Json last_criterion = nullptr;
+    const double3* last_positions = nullptr;
+    const int* last_boundary = nullptr;
 };
 Workspace workspace;
+
+template <typename T>
+void write_host_binary(const std::filesystem::path& path,const std::vector<T>& values)
+{
+    std::ofstream output;
+    output.exceptions(std::ios::badbit|std::ios::failbit);
+    output.open(path,std::ios::binary|std::ios::trunc);
+    output.write(reinterpret_cast<const char*>(values.data()),
+                 static_cast<std::streamsize>(values.size()*sizeof(T)));
+}
+
+template <typename T>
+void write_device_binary(const std::filesystem::path& path,const T* values,std::size_t count)
+{
+    std::vector<T> host(count);
+    if(count) CUDA_SAFE_CALL(cudaMemcpy(host.data(),values,count*sizeof(T),cudaMemcpyDeviceToHost));
+    write_host_binary(path,host);
+}
 
 // Main paper Eq. (3). The identical kernel serves tet and triangle elements.
 __global__ void green_increment(const double3* x, const Element* elements,
@@ -454,6 +478,9 @@ void initialize_criterion(const tetrahedra_obj& mesh, double threshold, int max_
     w.increment_min = std::numeric_limits<double>::infinity();
     w.increment_max = w.increment_sum = 0;
     w.last_mapping = nullptr;
+    w.last_criterion = nullptr;
+    w.last_positions = nullptr;
+    w.last_boundary = nullptr;
     w.mapping_complete = false;
 }
 
@@ -481,6 +508,57 @@ MappingDeviceView mapping_device_view()
             w.enabled && workspace.mapping_complete};
 }
 
+gipc::Json capture_criterion_snapshot(const std::string& directory_string)
+{
+    auto& w=workspace;
+    if(!w.enabled || w.last_criterion.is_null() || w.last_mapping.is_null()
+       || !w.last_positions || !w.last_boundary)
+        throw std::runtime_error("AGIPC criterion snapshot requested before a completed update");
+    const std::filesystem::path directory(directory_string);
+    std::filesystem::create_directories(directory);
+    std::vector<Element> elements;
+    std::vector<uint2> edges;
+    std::vector<int> offsets,adjacent,tags,reasons,boundary;
+    std::vector<double> increments;
+    std::vector<Strain> current_strain;
+    w.elements.copy_to_host(elements);w.edges.copy_to_host(edges);
+    w.offsets.copy_to_host(offsets);w.adjacent.copy_to_host(adjacent);
+    w.tags.copy_to_host(tags);w.reasons.copy_to_host(reasons);
+    w.increments.copy_to_host(increments);w.previous.copy_to_host(current_strain);
+    boundary.resize(w.fine_vertices);
+    CUDA_SAFE_CALL(cudaMemcpy(boundary.data(),w.last_boundary+w.fine_offset,
+                              boundary.size()*sizeof(int),cudaMemcpyDeviceToHost));
+    std::vector<std::uint32_t> element_vertices(4*elements.size());
+    std::vector<int> element_dims(elements.size());
+    std::vector<double> element_inverse(9*elements.size()),strain(9*elements.size());
+    for(std::size_t i=0;i<elements.size();++i)
+    {
+        element_dims[i]=elements[i].dim;
+        for(int j=0;j<4;++j) element_vertices[4*i+j]=elements[i].v[j];
+        for(int j=0;j<9;++j)
+        { element_inverse[9*i+j]=elements[i].inverse[j];strain[9*i+j]=current_strain[i].g[j]; }
+    }
+    write_host_binary(directory/"criterion_element_vertices.u32x4.bin",element_vertices);
+    write_host_binary(directory/"criterion_element_dims.i32.bin",element_dims);
+    write_host_binary(directory/"criterion_element_inverse.f64x9.bin",element_inverse);
+    write_host_binary(directory/"criterion_green_current.f64x9.bin",strain);
+    write_host_binary(directory/"criterion_green_increment.f64.bin",increments);
+    write_host_binary(directory/"criterion_edges.u32x2.bin",edges);
+    write_host_binary(directory/"criterion_edge_offsets.i32.bin",offsets);
+    write_host_binary(directory/"criterion_edge_elements.i32.bin",adjacent);
+    write_host_binary(directory/"criterion_edge_tags.i32.bin",tags);
+    write_host_binary(directory/"criterion_edge_reasons.i32.bin",reasons);
+    write_host_binary(directory/"criterion_boundary.i32.bin",boundary);
+    write_device_binary(directory/"criterion_current_positions.f64x3.bin",
+                        w.last_positions+w.fine_offset,w.fine_vertices);
+    return {{"format","agipc_criterion_snapshot_v1"},{"fine_offset",w.fine_offset},
+            {"fine_nodes",w.fine_vertices},{"element_count",elements.size()},
+            {"edge_count",edges.size()},{"edge_element_entries",adjacent.size()},
+            {"criterion",w.last_criterion},{"mapping",w.last_mapping},
+            {"history_timing","current versus immediately previous Newton iterate; reset once at subIP entry"},
+            {"current_green_exported",true},{"prior_green_not_exported",true}};
+}
+
 void begin_criterion_step(device_TetraData& mesh)
 {
     if(workspace.enabled) launch_increment(workspace,mesh.vertexes,true);
@@ -490,6 +568,8 @@ gipc::Json update_criterion(device_TetraData& mesh)
 {
     auto& w=workspace;
     if(!w.enabled) return nullptr;
+    w.last_positions=mesh.vertexes;
+    w.last_boundary=mesh.BoundaryType;
     CUDA_SAFE_CALL(cudaEventRecord(w.start));
     launch_increment(w,mesh.vertexes,false);
     launch_tags(w,mesh.BoundaryType);
@@ -519,7 +599,7 @@ gipc::Json update_criterion(device_TetraData& mesh)
         w.increment_sum+=sum;
         w.increment_samples+=increments.size();
     }
-    return {{"stage","criterion_only"},{"fine_vertex_count",w.fine_vertices},
+    gipc::Json result={{"stage","criterion_only"},{"fine_vertex_count",w.fine_vertices},
             {"edge_count",reasons.size()},{"protected_edge_count",protected_count},
             {"collapsible_edge_count",reasons.size()-protected_count},
             {"protected_edge_ratio",reasons.empty()?0.0:double(protected_count)/reasons.size()},
@@ -529,6 +609,8 @@ gipc::Json update_criterion(device_TetraData& mesh)
             {"green_increment_max",high},{"threshold",w.threshold},
             {"criterion_ms",elapsed},{"invalid_elements",invalid_count},
             {"history_convention","reset_at_subIP_initial_positions"}};
+    w.last_criterion=result;
+    return result;
 }
 
 gipc::Json criterion_summary()

@@ -6,6 +6,8 @@ The full fine H/g freeze at update300/frame31 passes independent reference check
 
 The 2026-09-15 performance-environment audit also fails the controlled-timing gate: a10-second idle probe reports10%--63% GPU utilization (median29%),18% median memory activity, P5/P8 transitions and300--450MHz graphics clocks, with unowned WDDM/compute processes. The new checkpoint pair is instrumented, follows different Newton trajectories and uses scaled assets, so all of its timing is excluded. It does establish the numerical branch location: frame27 Newton2/update56 is the first tag/mapping mismatch, and frame35 Jacobi/MAS state difference is2.13368%. See `AGIPC_FRAME_CHECKPOINT_DIVERGENCE.md`.
 
+A requested single preliminary uninstrumented35-frame pair was run after one-frame warmups. StiffGIPC/paper-current took41.1049s for784 applied Newton iterations; AGIPC-Core MAS32+reuse took50.1772s for522, an observed ratio of1.2207 and a per-Newton ratio of1.8334. AGIPC coarse solve alone accumulated28.1791s (56.16% of its simulation time). Both runs were finite and penetration-free, but terminal relative RMS difference was3.5029%. GPU pre-run medians were24%/36%, cooldown failed, order was fixed and only one pair was measured. Preserve this as a negative raw observation; it is not a controlled speed ratio. See `AGIPC_RECENT_EXPERIMENT_SYNTHESIS_2026-09-15.md`.
+
 Status: provisional reduced-scale evidence as of 2026-09-12. No paper-scale speedup has been reproduced.
 
 ## Reduced Figure 15 preflight

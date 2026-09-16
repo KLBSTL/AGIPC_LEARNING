@@ -404,7 +404,7 @@ struct ResidualDotSum
 
 ResidualDots device_residual_dots(const double* residual,const double* preconditioned,int count)
 {
-    // One reduction returns both scalars needed by the host-driven coarse PCG.
+    // One reduction returns both scalars needed by a host-driven PCG step.
     const auto first=thrust::make_zip_iterator(thrust::make_tuple(
         thrust::device_ptr<const double>(residual),
         thrust::device_ptr<const double>(preconditioned)));
@@ -623,14 +623,16 @@ gipc::Json post_correct_shadow(GalerkinState& target,const GIPCTripletMatrix& fi
                 target.fine_solution.data(),target.fine_residual.data(),target.fine_p.data(),
                 target.fine_ap.data(),alpha,fine_dofs);
             ++iterations;
-            residual2=device_dot(target.fine_residual.data(),target.fine_residual.data(),fine_dofs);
-            residual_history.push_back(std::sqrt(std::max(0.0,residual2)));
-            if(!std::isfinite(residual2)) { stop_reason="nonfinite_residual"; break; }
-            if(residual2<=tolerance2) { stop_reason="residual_tolerance"; break; }
             apply_diagonal<<<(blocks+kThreads-1)/kThreads,kThreads>>>(
                 target.fine_inverse_diagonal.data(),target.fine_residual.data(),
                 target.fine_z.data(),blocks);
-            const double next_rz=device_dot(target.fine_residual.data(),target.fine_z.data(),fine_dofs);
+            const auto next_dots=device_residual_dots(target.fine_residual.data(),
+                                                       target.fine_z.data(),fine_dofs);
+            residual2=next_dots.rr;
+            residual_history.push_back(std::sqrt(std::max(0.0,residual2)));
+            if(!std::isfinite(residual2)) { stop_reason="nonfinite_residual"; break; }
+            if(residual2<=tolerance2) { stop_reason="residual_tolerance"; break; }
+            const double next_rz=next_dots.rz;
             if(!std::isfinite(next_rz) || next_rz<=0 || !std::isfinite(rz) || rz<=0)
             { stop_reason="invalid_preconditioned_residual"; break; }
             update_p<<<(fine_dofs+kThreads-1)/kThreads,kThreads>>>(target.fine_p.data(),

@@ -115,12 +115,25 @@ struct RuntimeCoarseMas
         const int old_blocks=blocks;
         blocks=matrix.block_rows(); padded=(blocks+31)/32*32;
         const int unique=matrix.h_unique_key_number,padding=padded-blocks;
-        std::vector<int> host_rows(unique),host_cols(unique),identity(padded);
+        std::vector<int> host_rows(unique),host_cols(unique);
         CUDA_SAFE_CALL(cudaMemcpy(host_rows.data(),matrix.block_row_indices(),unique*sizeof(int),cudaMemcpyDeviceToHost));
         CUDA_SAFE_CALL(cudaMemcpy(host_cols.data(),matrix.block_col_indices(),unique*sizeof(int),cudaMemcpyDeviceToHost));
         last_reused=allocated && allow_reuse && old_blocks==blocks
             && host_rows==cached_rows && host_cols==cached_cols;
-        if(allocated && !last_reused) { value.FreeMAS();allocated=false; }
+        if(last_reused)
+        {
+            // The graph, padding and index buffers are unchanged; refresh only
+            // the numerical blocks and the zero-padded residual.
+            values.resize(unique+padding);
+            CUDA_SAFE_CALL(cudaMemcpy(values.data(),matrix.block_values(),
+                unique*sizeof(Eigen::Matrix3d),cudaMemcpyDeviceToDevice));
+            residual.resize(3*padded); residual.reset_zero(); z.resize(3*padded);
+            value.refresh_fixed_graph_bcoo(values.data(),rows.data(),cols.data(),
+                                            indices.data(),0,unique+padding);
+            return;
+        }
+        if(allocated) { value.FreeMAS();allocated=false; }
+        std::vector<int> identity(padded);
         std::vector<std::vector<unsigned int>> graph(padded);
         for(int i=0;i<unique;++i)
         {
@@ -147,11 +160,6 @@ struct RuntimeCoarseMas
         std::vector<uint32_t> host_indices(unique+padding);
         std::iota(host_indices.begin(),host_indices.end(),uint32_t{0}); indices.copy_from_host(host_indices);
         residual.resize(3*padded); residual.reset_zero(); z.resize(3*padded);
-        if(last_reused)
-        {
-            value.refresh_fixed_graph_bcoo(values.data(),rows.data(),cols.data(),indices.data(),0,unique+padding);
-            return;
-        }
         allocated=true;
         value.initPreconditioner_Neighbor(padded,0,std::max<std::size_t>(1,neighbors.size()),nullptr,padded);
         value.neighborListSize=static_cast<int>(neighbors.size());

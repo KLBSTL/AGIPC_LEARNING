@@ -80,6 +80,7 @@ __global__ void check_local_matrices(const __GEIGEN__::GPUMas32MatrixSymT* local
     constexpr int n=kCheckDimension;
     extern __shared__ double work[];
     __shared__ int finite[2],positive[2];
+    __shared__ double inverse_residual;
     __shared__ double partial[kCheckThreads],diag_local[kCheckThreads],diag_inverse[kCheckThreads];
     const int tid=threadIdx.x,id=blockIdx.x;
     if(tid<2) finite[tid]=1;
@@ -100,9 +101,6 @@ __global__ void check_local_matrices(const __GEIGEN__::GPUMas32MatrixSymT* local
     if(tid<2) positive[tid]=finite[tid];
     __syncthreads();
     if(finite[0]) check_cholesky(work,&positive[0]);
-    for(int i=tid;i<n*n;i+=blockDim.x) work[i]=packed_scalar(inverse[id],i/n,i%n);
-    __syncthreads();
-    if(finite[1]) check_cholesky(work,&positive[1]);
     for(int i=tid;i<n*n;i+=blockDim.x)
     {
         double a=packed_scalar(local[id],i/n,i%n);
@@ -124,10 +122,26 @@ __global__ void check_local_matrices(const __GEIGEN__::GPUMas32MatrixSymT* local
     __syncthreads();
     if(tid==0)
     {
-        double norm2=0,min_a=CUDART_INF,min_b=CUDART_INF;
+        double norm2=0;
+        for(int i=0;i<kCheckThreads;++i) norm2+=partial[i];
+        inverse_residual=sqrt(norm2/n);
+    }
+    __syncthreads();
+    // For symmetric B, A SPD and ||I-AB||_2 < 1 imply B SPD. The accepted
+    // Frobenius residual is at most 1e-3*sqrt(96), so the second Cholesky is
+    // needed only for failed or borderline local checks.
+    if(finite[1] && !(positive[0] && inverse_residual<=1e-3))
+    {
+        for(int i=tid;i<n*n;i+=blockDim.x) work[i]=packed_scalar(inverse[id],i/n,i%n);
+        __syncthreads();
+        check_cholesky(work,&positive[1]);
+    }
+    if(tid==0)
+    {
+        double min_a=CUDART_INF,min_b=CUDART_INF;
         for(int i=0;i<kCheckThreads;++i)
-        { norm2+=partial[i];min_a=fmin(min_a,diag_local[i]);min_b=fmin(min_b,diag_inverse[i]); }
-        results[id]={finite[0],finite[1],positive[0],positive[1],min_a,min_b,sqrt(norm2/n)};
+        { min_a=fmin(min_a,diag_local[i]);min_b=fmin(min_b,diag_inverse[i]); }
+        results[id]={finite[0],finite[1],positive[0],positive[1],min_a,min_b,inverse_residual};
     }
 }
 

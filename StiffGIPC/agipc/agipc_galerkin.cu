@@ -150,7 +150,6 @@ struct RuntimeCoarseMas
         if(last_reused)
         {
             value.refresh_fixed_graph_bcoo(values.data(),rows.data(),cols.data(),indices.data(),0,unique+padding);
-            CUDA_SAFE_CALL(cudaDeviceSynchronize());
             return;
         }
         allocated=true;
@@ -163,7 +162,6 @@ struct RuntimeCoarseMas
         CUDA_SAFE_CALL(cudaMemcpy(value.d_real_map_partId,identity.data(),padded*sizeof(int),cudaMemcpyHostToDevice));
         value.initPreconditioner_Matrix();
         value.setPreconditioner_bcoo(values.data(),rows.data(),cols.data(),indices.data(),0,unique+padding,0);
-        CUDA_SAFE_CALL(cudaDeviceSynchronize());
         cached_rows=std::move(host_rows);cached_cols=std::move(host_cols);
     }
     void apply(const double* input,double* output)

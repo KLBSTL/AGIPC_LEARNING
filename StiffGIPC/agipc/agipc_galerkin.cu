@@ -789,6 +789,7 @@ gipc::Json solve_coarse_shadow(GalerkinState& target,const GIPCTripletMatrix& fi
                     {"mas_setup_wall_ms",mas_setup_ms},{"mas_validation_wall_ms",mas_validation_ms}};
         }
     }
+    const auto pcg_started=std::chrono::steady_clock::now();
     CUDA_SAFE_CALL(cudaMemcpy(target.coarse_p.data(),target.coarse_z.data(),
                               dofs*sizeof(double),cudaMemcpyDeviceToDevice));
     const auto initial_dots=device_residual_dots(target.coarse_r.data(),
@@ -841,6 +842,8 @@ gipc::Json solve_coarse_shadow(GalerkinState& target,const GIPCTripletMatrix& fi
             && residual2<=tolerance2*(1.0+kResidualGrowthTolerance)*(1.0+kResidualGrowthTolerance);
         if(!converged && failure.empty()) failure="true_residual_not_converged";
     }
+    const double pcg_wall_ms=std::chrono::duration<double,std::milli>(
+        std::chrono::steady_clock::now()-pcg_started).count();
     target.prolonged.resize(fine_dofs);
     prolongate_mixed<<<(fine.block_rows()+kThreads-1)/kThreads,kThreads>>>(
         target.coarse_solution.data(),target.prolonged.data(),mapping.fine_to_coarse,
@@ -862,6 +865,7 @@ gipc::Json solve_coarse_shadow(GalerkinState& target,const GIPCTripletMatrix& fi
             {"preconditioner",mas?"mas32":"block_jacobi"},
             {"mas_local_diagnostics",mas_diagnostics},{"mas_setup_wall_ms",mas_setup_ms},
             {"mas_validation_wall_ms",mas_validation_ms},{"true_residual_checked",bool(mas)},
+            {"pcg_wall_ms",pcg_wall_ms},
             {"mas_validation_mode",target.mas_validation},{"mas_graph_reused",mas && mas->last_reused},
             {"recursive_final_residual_norm",std::sqrt(std::max(0.0,recursive2))},
             {"iterations",iterations},{"max_iterations",max_iterations},
@@ -1049,6 +1053,84 @@ gipc::Json adopt_candidate(GalerkinState& target,double* destination,
     return target.last_adoption;
 }
 
+}
+
+gipc::Json benchmark_production_coarse(const GIPCTripletMatrix& matrix,
+                                       const double* device_rhs,int repetitions)
+{
+    const int blocks=matrix.block_rows(),dofs=3*blocks,unique=matrix.h_unique_key_number;
+    if(blocks<1 || unique<1 || repetitions<1 || repetitions>16)
+        throw std::runtime_error("Invalid production coarse benchmark dimensions");
+    GalerkinState target;
+    target.coarse_matrix=std::make_unique<GIPCTripletMatrix>();
+    auto& coarse=*target.coarse_matrix;
+    coarse.init_var(); coarse.reshape(blocks,blocks);
+    coarse.h_unique_key_number=unique;
+    coarse.m_block_values.resize(unique);
+    coarse.m_block_row_indices.resize(unique);
+    coarse.m_block_col_indices.resize(unique);
+    CUDA_SAFE_CALL(cudaMemcpy(coarse.block_values(),matrix.block_values(),
+                              unique*sizeof(Eigen::Matrix3d),cudaMemcpyDeviceToDevice));
+    CUDA_SAFE_CALL(cudaMemcpy(coarse.block_row_indices(),matrix.block_row_indices(),
+                              unique*sizeof(int),cudaMemcpyDeviceToDevice));
+    CUDA_SAFE_CALL(cudaMemcpy(coarse.block_col_indices(),matrix.block_col_indices(),
+                              unique*sizeof(int),cudaMemcpyDeviceToDevice));
+    target.coarse_rhs.resize(dofs);
+    CUDA_SAFE_CALL(cudaMemcpy(target.coarse_rhs.data(),device_rhs,
+                              dofs*sizeof(double),cudaMemcpyDeviceToDevice));
+    target.invalid_entries.resize(1); target.invalid_entries.reset_zero();
+    target.use_coarse_mas32=true;
+    target.mas_validation="gpu";
+    target.mas_reuse_enabled=true;
+    gipc::Json runs=gipc::Json::array();
+    std::vector<double> first_solution;
+    bool passed=true;
+    for(int repeat=0;repeat<repetitions;++repeat)
+    {
+        const auto started=std::chrono::steady_clock::now();
+        // Every fine block is an identity-prefix block, so prolongation is an
+        // identity map. The timed solve is the production coarse path itself.
+        auto result=solve_coarse_shadow(target,matrix,device_rhs,dofs,
+                                        MappingDeviceView{},blocks);
+        CUDA_SAFE_CALL(cudaDeviceSynchronize());
+        const double wall_ms=std::chrono::duration<double,std::milli>(
+            std::chrono::steady_clock::now()-started).count();
+        std::vector<double> solution;
+        target.coarse_solution.copy_to_host(solution);
+        double difference2=0,reference2=0;
+        if(repeat==0) first_solution=solution;
+        for(int i=0;i<dofs;++i)
+        {
+            difference2+=(solution[i]-first_solution[i])*(solution[i]-first_solution[i]);
+            reference2+=first_solution[i]*first_solution[i];
+        }
+        const double relative_difference=std::sqrt(difference2/std::max(reference2,1e-300));
+        const double initial=result.value("initial_residual_norm",0.0);
+        const double final=result.value("final_residual_norm",
+                                         std::numeric_limits<double>::infinity());
+        const bool valid=result.value("converged",false)
+            && result.value("true_residual_checked",false)
+            && result.value("failure_reason",std::string{}).empty()
+            && std::isfinite(final) && final<=initial*1e-3*(1.0+2e-6)
+            && std::isfinite(relative_difference);
+        passed&=valid;
+        runs.push_back({{"repeat",repeat},{"wall_ms",wall_ms},
+            {"mas_setup_wall_ms",result.value("mas_setup_wall_ms",0.0)},
+            {"mas_validation_wall_ms",result.value("mas_validation_wall_ms",0.0)},
+            {"pcg_wall_ms",result.value("pcg_wall_ms",0.0)},
+            {"iterations",result.value("iterations",0)},
+            {"mas_graph_reused",result.value("mas_graph_reused",false)},
+            {"initial_residual_norm",initial},{"final_residual_norm",final},
+            {"relative_solution_difference_from_first",relative_difference},
+            {"failure_reason",result.value("failure_reason",std::string{})},
+            {"passed",valid}});
+    }
+    return {{"test","agipc_production_coarse_fixed_input"},
+            {"coarse_block_nodes",blocks},{"coarse_unique_blocks",unique},
+            {"preconditioner","mas32"},{"validation","gpu"},
+            {"precise_graph_reuse",true},{"runs",runs},{"passed",passed},
+            {"timing_scope","production solve_coarse_shadow; setup, validation, PCG and identity fine metrics"},
+            {"performance_claim",false}};
 }
 
 void configure_galerkin(int fine_correction_max_iterations,

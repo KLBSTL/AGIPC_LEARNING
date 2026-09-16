@@ -323,6 +323,19 @@ gipc::Json replay_coarse_snapshot(const std::string& sample_directory)
             [&](const double* r,double* z) {
                 mas.value.preconditioning(reinterpret_cast<const double3*>(r),reinterpret_cast<double3*>(z));
             });
+    GIPCTripletMatrix production_matrix;
+    production_matrix.init_var(); production_matrix.reshape(blocks,blocks);
+    production_matrix.h_unique_key_number=unique;
+    production_matrix.m_block_values.copy_from_host(
+        std::vector<Eigen::Matrix3d>(values.begin(),values.begin()+unique));
+    production_matrix.m_block_row_indices.copy_from_host(
+        std::vector<int>(rows.begin(),rows.begin()+unique));
+    production_matrix.m_block_col_indices.copy_from_host(
+        std::vector<int>(cols.begin(),cols.begin()+unique));
+    cudatool::CudaDeviceBuffer<double> production_rhs;
+    production_rhs.copy_from_host(std::vector<double>(rhs.begin(),rhs.begin()+3*blocks));
+    const auto production=benchmark_production_coarse(
+        production_matrix,production_rhs.data(),3);
     return {{"test","agipc_frozen_coarse_gpu_replay"},{"sample_directory",sample_directory},
         {"coarse_block_nodes",blocks},{"padded_block_nodes",padded},
         {"coarse_unique_blocks",unique},{"adjacency_edges",neighbors.size()/2},
@@ -334,6 +347,7 @@ gipc::Json replay_coarse_snapshot(const std::string& sample_directory)
         {"timing_scope","diagnostic single run; setup then PCG; validation and vector serialization excluded"},
         {"solution_scope","original coarse blocks only; FP64 xyz block order"},
         {"mas32_local_diagnostics",diagnostics},{"mas32",mas_solve},
+        {"production_coarse",production},
         {"mas32_gpu_local_diagnostics",gpu_diagnostics},{"cpu_gpu_local_diagnostics_agree",diagnostics_agree},
         {"passed",std::isfinite(spmv_error) && spmv_error<=1e-12
             && jacobi.value("passed",false) && mas_solve.value("passed",false) && diagnostics_agree},

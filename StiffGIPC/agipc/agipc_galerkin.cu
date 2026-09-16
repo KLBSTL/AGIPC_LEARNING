@@ -23,6 +23,9 @@
 #include <thrust/inner_product.h>
 #include <thrust/reduce.h>
 #include <thrust/scan.h>
+#include <thrust/iterator/zip_iterator.h>
+#include <thrust/transform_reduce.h>
+#include <thrust/tuple.h>
 
 namespace agipc
 {
@@ -369,6 +372,38 @@ double device_dot(const double* a,const double* b,int count)
 {
     return thrust::inner_product(thrust::device_ptr<const double>(a),
         thrust::device_ptr<const double>(a)+count,thrust::device_ptr<const double>(b),0.0);
+}
+
+struct ResidualDots
+{
+    double rr,rz;
+};
+
+struct ResidualDotTerm
+{
+    __host__ __device__ ResidualDots operator()(const thrust::tuple<double,double>& values) const
+    {
+        const double r=thrust::get<0>(values);
+        return {r*r,r*thrust::get<1>(values)};
+    }
+};
+
+struct ResidualDotSum
+{
+    __host__ __device__ ResidualDots operator()(ResidualDots a,ResidualDots b) const
+    {
+        return {a.rr+b.rr,a.rz+b.rz};
+    }
+};
+
+ResidualDots device_residual_dots(const double* residual,const double* preconditioned,int count)
+{
+    // One reduction returns both scalars needed by the host-driven coarse PCG.
+    const auto first=thrust::make_zip_iterator(thrust::make_tuple(
+        thrust::device_ptr<const double>(residual),
+        thrust::device_ptr<const double>(preconditioned)));
+    return thrust::transform_reduce(first,first+count,ResidualDotTerm{},
+                                    ResidualDots{0.0,0.0},ResidualDotSum{});
 }
 
 template <typename T>
@@ -748,8 +783,10 @@ gipc::Json solve_coarse_shadow(GalerkinState& target,const GIPCTripletMatrix& fi
     }
     CUDA_SAFE_CALL(cudaMemcpy(target.coarse_p.data(),target.coarse_z.data(),
                               dofs*sizeof(double),cudaMemcpyDeviceToDevice));
-    const double initial2=device_dot(target.coarse_r.data(),target.coarse_r.data(),dofs);
-    double residual2=initial2,rz=device_dot(target.coarse_r.data(),target.coarse_z.data(),dofs);
+    const auto initial_dots=device_residual_dots(target.coarse_r.data(),
+                                                target.coarse_z.data(),dofs);
+    const double initial2=initial_dots.rr;
+    double residual2=initial2,rz=initial_dots.rz;
     const double tolerance2=1e-6*initial2;
     int iterations=0; std::string failure;
     gipc::Spmv spmv;
@@ -769,11 +806,13 @@ gipc::Json solve_coarse_shadow(GalerkinState& target,const GIPCTripletMatrix& fi
         update_x_r<<<(dofs+kThreads-1)/kThreads,kThreads>>>(target.coarse_solution.data(),
             target.coarse_r.data(),target.coarse_p.data(),target.coarse_ap.data(),alpha,dofs);
         ++iterations;
-        residual2=device_dot(target.coarse_r.data(),target.coarse_r.data(),dofs);
+        apply_preconditioner(target.coarse_r.data(),target.coarse_z.data());
+        const auto next_dots=device_residual_dots(target.coarse_r.data(),
+                                                  target.coarse_z.data(),dofs);
+        residual2=next_dots.rr;
         if(!std::isfinite(residual2)) { failure="nonfinite_residual"; break; }
         if(residual2<=tolerance2) break;
-        apply_preconditioner(target.coarse_r.data(),target.coarse_z.data());
-        const double next_rz=device_dot(target.coarse_r.data(),target.coarse_z.data(),dofs);
+        const double next_rz=next_dots.rz;
         if(!std::isfinite(next_rz) || fabs(rz)<1e-30 || (mas && next_rz<=0)) { failure="invalid_preconditioned_residual"; break; }
         update_p<<<(dofs+kThreads-1)/kThreads,kThreads>>>(target.coarse_p.data(),
             target.coarse_z.data(),next_rz/rz,dofs); rz=next_rz;

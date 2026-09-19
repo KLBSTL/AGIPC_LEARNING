@@ -1,0 +1,1311 @@
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:9:namespace agipc
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:14:    size_t coarse_nodes     = 0;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:19:    double green_strain_threshold = 0.0;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:24:    bool   useful_coarsening = false;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:26:    const char* mapping_mode = "matching";
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:27:    int    mapping_levels = 0;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:36:    size_t coarse_block_nodes     = 0;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:38:    size_t coarse_unique_triplets = 0;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:40:    size_t coarse_pcg_iterations  = 0;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:44:    double coarse_assembly_ms     = 0.0;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:45:    double coarse_pcg_ms          = 0.0;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:47:    bool   coarse_pcg_converged   = false;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:48:    bool   skipped_insufficient_coarsening = false;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:61:    double fine_correction_ms    = 0.0;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:70:    size_t coarse_nodes                  = 0;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:72:    size_t coarse_unique_triplets        = 0;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:73:    size_t coarse_pcg_iterations         = 0;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:74:    double max_coarse_hessian_error      = 0.0;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:75:    double max_coarse_rhs_error          = 0.0;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:76:    double max_coarse_solution_error     = 0.0;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:78:    double coarse_relative_residual      = 0.0;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:81:    bool   useful_coarsening_threshold_checked = false;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:82:    bool   uncoarsened_reduction_skipped = false;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:88:                          double green_strain_threshold,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:90:                          bool use_coarse_solver = false,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:91:                          int fine_correction_max_iterations = 50,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:93:                          const char* mapping_mode = "matching",
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:98:bool gpu_has_useful_coarsening();
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:99:int gpu_fine_correction_max_iterations();
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:113:}  // namespace agipc
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1:#include "agipc/agipc_coarsening.cuh"
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:28:namespace agipc
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:48:    bool   use_coarse_solver  = false;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:52:    bool   coarse_pcg_converged = false;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:54:    bool   useful_coarsening  = false;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:55:    double threshold          = 5e-4;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:56:    double coarse_relative_tolerance_squared = 1e-8;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:58:    int    fine_correction_max_iterations = 50;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:59:    bool   use_warp_hash = false;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:67:    size_t coarse_node_count  = 0;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:68:    size_t coarse_pcg_iterations = 0;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:69:    size_t fine_correction_iterations = 0;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:85:    cudatool::CudaDeviceBuffer<int> fine_to_coarse;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:86:    cudatool::CudaDeviceBuffer<int> next_fine_to_coarse;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:89:    cudatool::CudaDeviceBuffer<double> coarse_rhs;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:90:    cudatool::CudaDeviceBuffer<double> coarse_solution;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:91:    cudatool::CudaDeviceBuffer<double> coarse_r;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:92:    cudatool::CudaDeviceBuffer<double> coarse_z;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:93:    cudatool::CudaDeviceBuffer<double> coarse_p;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:94:    cudatool::CudaDeviceBuffer<double> coarse_ap;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:108:    std::unique_ptr<GIPCTripletMatrix> coarse_matrix;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:113:bool useful_coarsening(size_t fine_nodes, size_t coarse_nodes)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:115:    return fine_nodes > 0 && coarse_nodes * 100 <= fine_nodes * 95;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:250:                          double threshold,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:265:        protected_edge = increment >= threshold;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:279:__global__ void initialize_identity_mapping(int* mapping, int count)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:283:        mapping[index] = index;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:286:__global__ void build_warp_hash_masks(const uint2* edges,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:347:__global__ void compose_fine_mapping(const int* fine_to_current,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:357:__global__ void count_aggregate_sizes(const int* fine_to_coarse,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:363:        atomicAdd(&aggregate_sizes[fine_to_coarse[index]], 1);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:366:__global__ void select_matching_candidates(const uint2* edges,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:439:__global__ void write_mapping(const int* parent,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:441:                              int* fine_to_coarse,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:447:    fine_to_coarse[index] = root_prefix[parent[index]];
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:450:__global__ void map_triplets_to_coarse(const Eigen::Matrix3d* fine_values,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:453:                                       Eigen::Matrix3d*       coarse_values,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:454:                                       int*                   coarse_rows,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:455:                                       int*                   coarse_cols,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:456:                                       const int*             fine_to_coarse,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:472:        coarse_rows[index] = 0;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:473:        coarse_cols[index] = 0;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:474:        coarse_values[index].setZero();
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:478:    int coarse_row = row < prefix_blocks
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:480:                         : prefix_blocks + fine_to_coarse[row - prefix_blocks];
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:481:    int coarse_col = col < prefix_blocks
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:483:                         : prefix_blocks + fine_to_coarse[col - prefix_blocks];
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:487:    // upper-triangular convention after mapping, and account for both halves
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:488:    // when an off-diagonal fine block collapses onto a coarse diagonal block.
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:489:    if(row != col && coarse_row == coarse_col)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:491:    else if(coarse_row > coarse_col)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:493:        const int temporary = coarse_row;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:494:        coarse_row          = coarse_col;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:495:        coarse_col          = temporary;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:499:    coarse_rows[index]   = coarse_row;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:500:    coarse_cols[index]   = coarse_col;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:501:    coarse_values[index] = value;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:503:        if(!isfinite(coarse_values[index].data()[entry]))
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:507:__global__ void reduce_rhs_to_coarse(const double* fine_rhs,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:508:                                     double*       coarse_rhs,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:509:                                     const int*    fine_to_coarse,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:527:    const int coarse_block = fine_block < prefix_blocks
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:529:                                 : prefix_blocks + fine_to_coarse[fine_block - prefix_blocks];
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:530:    atomicAdd(coarse_rhs + coarse_block * 3 + component, value);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:624:__global__ void prolongate_solution(const double* coarse_solution,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:626:                                    const int*    fine_to_coarse,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:636:    const int coarse_block = fine_block < prefix_blocks
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:638:                                 : prefix_blocks + fine_to_coarse[fine_block - prefix_blocks];
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:639:    fine_solution[index] = coarse_solution[coarse_block * 3 + component];
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:684:                          double green_strain_threshold,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:686:                          bool use_coarse_solver,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:687:                          int fine_correction_max_iterations,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:689:                          const char* mapping_mode,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:692:    if(green_strain_threshold <= 0.0)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:693:        throw std::invalid_argument("AGIPC Green strain threshold must be positive");
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:695:        throw std::invalid_argument("AGIPC aggregation rounds must be positive");
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:696:    if(fine_correction_max_iterations <= 0)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:697:        throw std::invalid_argument("AGIPC fine correction iteration limit must be positive");
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:698:    if(mapping_mode == nullptr
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:699:       || (std::string(mapping_mode) != "matching" && std::string(mapping_mode) != "warp-hash"))
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:700:        throw std::invalid_argument("AGIPC mapping must be matching or warp-hash");
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:702:        throw std::invalid_argument("AGIPC max mapping levels must be in 1..16");
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:704:    state.use_coarse_solver  = use_coarse_solver;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:705:    state.threshold          = green_strain_threshold;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:707:    state.fine_correction_max_iterations = fine_correction_max_iterations;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:709:    state.use_warp_hash      = std::string(mapping_mode) == "warp-hash";
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:720:    return state.enabled && state.use_coarse_solver;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:728:bool gpu_has_useful_coarsening()
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:730:    return state.useful_coarsening;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:733:int gpu_fine_correction_max_iterations()
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:735:    return state.fine_correction_max_iterations;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:809:    state.fine_to_coarse.resize(state.fem_point_count);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:810:    state.next_fine_to_coarse.resize(state.fem_point_count);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:814:    state.coarse_node_count = state.fem_point_count;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:817:    state.useful_coarsening = false;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:825:    state.coarse_pcg_converged = false;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:835:    stats.coarse_nodes     = state.fem_point_count;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:838:    stats.green_strain_threshold = state.threshold;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:888:                                         state.threshold,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:894:    int coarse_nodes = static_cast<int>(state.fem_point_count);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:895:    stats.mapping_mode = state.use_warp_hash ? "warp-hash" : "matching";
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:896:    if(state.use_warp_hash)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:898:        initialize_identity_mapping<<<point_blocks, kThreads>>>(
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:899:            state.fine_to_coarse.data(), static_cast<int>(state.fem_point_count));
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:908:            build_warp_hash_masks<<<edge_blocks, kThreads>>>(
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:911:                state.fine_to_coarse.data(),
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:933:            compose_fine_mapping<<<point_blocks, kThreads>>>(
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:934:                state.fine_to_coarse.data(),
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:936:                state.next_fine_to_coarse.data(),
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:938:            CUDA_SAFE_CALL(cudaMemcpy(state.fine_to_coarse.data(),
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:939:                                      state.next_fine_to_coarse.data(),
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:947:            ++stats.mapping_levels;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:949:            if(next_nodes == coarse_nodes)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:951:            coarse_nodes = next_nodes;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:956:        count_aggregate_sizes<<<point_blocks, kThreads>>>(state.fine_to_coarse.data(),
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:970:            select_matching_candidates<<<edge_blocks, kThreads>>>(
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:996:        write_mapping<<<point_blocks, kThreads>>>(state.parent.data(),
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:998:                                                   state.fine_to_coarse.data(),
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1000:        coarse_nodes = thrust::reduce(thrust::device_ptr<int>(state.root_flags.data()),
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1004:        stats.mapping_levels = 1;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1005:        stats.level_nodes[0] = static_cast<size_t>(coarse_nodes);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1026:        thrust::device_ptr<int>(state.aggregate_sizes.data()) + coarse_nodes);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1028:    stats.coarse_nodes     = coarse_nodes;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1030:    stats.collapsed_edges  = state.fem_point_count - coarse_nodes;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1035:                                 ? static_cast<double>(coarse_nodes)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1038:    stats.useful_coarsening = useful_coarsening(state.fem_point_count,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1039:                                                 static_cast<size_t>(coarse_nodes));
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1042:    state.coarse_node_count = coarse_nodes;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1043:    state.useful_coarsening = stats.useful_coarsening;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1045:    state.coarse_pcg_converged = false;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1055:       || state.fem_point_count == 0 || state.coarse_node_count == 0)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1062:    if(!state.useful_coarsening)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1065:        stats.coarse_block_nodes = stats.fine_block_nodes - state.fem_point_count
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1066:                                   + state.coarse_node_count;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1067:        stats.skipped_insufficient_coarsening = true;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1069:        state.coarse_pcg_converged = false;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1074:    const size_t coarse_block_nodes = prefix_blocks + state.coarse_node_count;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1086:    if(!state.coarse_matrix)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1088:        state.coarse_matrix = std::make_unique<GIPCTripletMatrix>();
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1089:        state.coarse_matrix->init_var();
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1091:    auto& coarse_matrix = *state.coarse_matrix;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1092:    coarse_matrix.resize(static_cast<int>(coarse_block_nodes),
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1093:                         static_cast<int>(coarse_block_nodes),
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1095:    coarse_matrix.resize_collision_hash_size(fine_triplets);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1096:    coarse_matrix.global_triplet_offset = static_cast<int>(fine_triplets);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1097:    state.coarse_rhs.resize(coarse_block_nodes * 3);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1098:    state.coarse_rhs.reset_zero();
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1103:    map_triplets_to_coarse<<<triplet_blocks, kThreads>>>(
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1107:        coarse_matrix.block_values(),
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1108:        coarse_matrix.block_row_indices(),
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1109:        coarse_matrix.block_col_indices(),
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1110:        state.fine_to_coarse.data(),
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1117:    reduce_rhs_to_coarse<<<rhs_blocks, kThreads>>>(fine_rhs,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1118:                                                   state.coarse_rhs.data(),
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1119:                                                   state.fine_to_coarse.data(),
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1127:    converter.convert(coarse_matrix,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1132:    const size_t coarse_dofs = coarse_block_nodes * 3;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1133:    state.coarse_solution.resize(coarse_dofs);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1134:    state.coarse_solution.reset_zero();
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1135:    state.coarse_r.resize(coarse_dofs);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1136:    state.coarse_z.resize(coarse_dofs);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1137:    state.coarse_p.resize(coarse_dofs);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1138:    state.coarse_ap.resize(coarse_dofs);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1139:    state.inverse_diagonal.resize(coarse_block_nodes);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1140:    state.diagonal_found.resize(coarse_block_nodes);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1141:    CUDA_SAFE_CALL(cudaMemcpy(state.coarse_r.data(),
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1142:                              state.coarse_rhs.data(),
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1143:                              coarse_dofs * sizeof(double),
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1146:    const int coarse_block_launch = static_cast<int>((coarse_block_nodes + kThreads - 1) / kThreads);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1147:    initialize_inverse_diagonal<<<coarse_block_launch, kThreads>>>(
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1150:        static_cast<int>(coarse_block_nodes));
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1151:    const int unique_triplets = coarse_matrix.h_unique_key_number;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1153:    extract_inverse_diagonal<<<unique_launch, kThreads>>>(coarse_matrix.block_values(),
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1154:                                                          coarse_matrix.block_row_indices(),
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1155:                                                          coarse_matrix.block_col_indices(),
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1160:    apply_block_diagonal<<<coarse_block_launch, kThreads>>>(state.inverse_diagonal.data(),
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1161:                                                            state.coarse_r.data(),
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1162:                                                            state.coarse_z.data(),
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1163:                                                            static_cast<int>(coarse_block_nodes));
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1164:    CUDA_SAFE_CALL(cudaMemcpy(state.coarse_p.data(),
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1165:                              state.coarse_z.data(),
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1166:                              coarse_dofs * sizeof(double),
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1171:        state.coarse_r.data(), state.coarse_r.data(), coarse_dofs);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1173:    double rz = device_dot(state.coarse_r.data(), state.coarse_z.data(), coarse_dofs);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1174:    const double tolerance_squared = state.coarse_relative_tolerance_squared
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1176:    const size_t max_iterations = std::min<size_t>(512, std::max<size_t>(1, coarse_dofs));
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1179:    const int dof_launch = static_cast<int>((coarse_dofs + kThreads - 1) / kThreads);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1184:                                  coarse_matrix.block_values(),
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1185:                                  coarse_matrix.block_row_indices(),
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1186:                                  coarse_matrix.block_col_indices(),
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1188:                                  cudatool::CDenseVectorView<double>(state.coarse_p.data(),
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1189:                                                                     static_cast<int>(coarse_dofs)),
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1191:                                  cudatool::DenseVectorView<double>(state.coarse_ap.data(),
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1192:                                                                    static_cast<int>(coarse_dofs)));
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1194:            state.coarse_p.data(), state.coarse_ap.data(), coarse_dofs);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1199:        update_solution_and_residual<<<dof_launch, kThreads>>>(state.coarse_solution.data(),
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1200:                                                               state.coarse_r.data(),
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1201:                                                               state.coarse_p.data(),
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1202:                                                               state.coarse_ap.data(),
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1204:                                                               static_cast<int>(coarse_dofs));
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1206:            state.coarse_r.data(), state.coarse_r.data(), coarse_dofs);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1212:        apply_block_diagonal<<<coarse_block_launch, kThreads>>>(state.inverse_diagonal.data(),
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1213:                                                                state.coarse_r.data(),
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1214:                                                                state.coarse_z.data(),
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1215:                                                                static_cast<int>(coarse_block_nodes));
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1217:            state.coarse_r.data(), state.coarse_z.data(), coarse_dofs);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1221:        update_direction<<<dof_launch, kThreads>>>(state.coarse_p.data(),
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1222:                                                   state.coarse_z.data(),
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1224:                                                   static_cast<int>(coarse_dofs));
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1231:    prolongate_solution<<<fine_dof_launch, kThreads>>>(state.coarse_solution.data(),
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1233:                                                       state.fine_to_coarse.data(),
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1240:    float coarse_assembly_ms = 0.0f;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1241:    float coarse_pcg_ms = 0.0f;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1244:        &coarse_assembly_ms, timing_start, timing_after_assembly));
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1246:        &coarse_pcg_ms, timing_after_assembly, timing_after_pcg));
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1260:    stats.coarse_block_nodes     = coarse_block_nodes;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1262:    stats.coarse_unique_triplets = coarse_matrix.h_unique_key_number;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1264:    stats.coarse_pcg_iterations  = pcg_iterations;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1268:    stats.coarse_assembly_ms     = coarse_assembly_ms;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1269:    stats.coarse_pcg_ms          = coarse_pcg_ms;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1271:    stats.coarse_pcg_converged   = residual_squared <= tolerance_squared;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1273:    state.coarse_pcg_iterations  = pcg_iterations;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1274:    state.coarse_pcg_converged   = stats.coarse_pcg_converged;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1285:    if(!state.enabled || !state.initialized || !state.useful_coarsening
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1286:       || !state.coarse_pcg_converged || !state.coarse_matrix
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1447:    float fine_correction_ms = 0.0f;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1448:    CUDA_SAFE_CALL(cudaEventElapsedTime(&fine_correction_ms, timing_start, timing_end));
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1466:    stats.fine_correction_ms    = fine_correction_ms;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1472:    state.fine_correction_iterations = iterations;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1473:    state.fine_solution_ready = state.coarse_pcg_converged && invalid_entries == 0
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1481:       || state.fine_solution.size() != dofs || !state.useful_coarsening)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1488:        *total_iterations = state.coarse_pcg_iterations + state.fine_correction_iterations;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1498:    constexpr int coarse_nodes = 3;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1500:    constexpr int coarse_dofs  = coarse_nodes * 3;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1501:    const std::vector<int> mapping = {1, 0, 1, 2};
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1539:    state.coarse_relative_tolerance_squared = 1e-20;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1541:    state.coarse_node_count = coarse_nodes;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1542:    state.useful_coarsening = useful_coarsening(fine_nodes, coarse_nodes);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1543:    state.fine_to_coarse.copy_from_host(mapping);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1546:    Eigen::Matrix<double, coarse_dofs, fine_dofs> restriction =
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1547:        Eigen::Matrix<double, coarse_dofs, fine_dofs>::Zero();
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1549:        restriction.block<3, 3>(mapping[fine] * 3, fine * 3).setIdentity();
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1550:    const Eigen::Matrix<double, coarse_dofs, coarse_dofs> expected_hessian =
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1552:    const Eigen::Matrix<double, coarse_dofs, 1> expected_rhs = restriction * fine_rhs_host;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1553:    const Eigen::Matrix<double, coarse_dofs, 1> expected_solution =
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1564:    if(stats.available && state.coarse_matrix)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1566:        const int unique = state.coarse_matrix->h_unique_key_number;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1570:        state.coarse_matrix->m_block_values.copy_to_host(all_values);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1571:        state.coarse_matrix->m_block_row_indices.copy_to_host(all_rows);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1572:        state.coarse_matrix->m_block_col_indices.copy_to_host(all_cols);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1576:        state.coarse_rhs.copy_to_host(gpu_rhs);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1577:        state.coarse_solution.copy_to_host(gpu_solution);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1581:    Eigen::Matrix<double, coarse_dofs, coarse_dofs> actual_hessian =
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1582:        Eigen::Matrix<double, coarse_dofs, coarse_dofs>::Zero();
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1603:    result.coarse_nodes           = coarse_nodes;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1605:    result.coarse_unique_triplets = gpu_values.size();
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1606:    result.coarse_pcg_iterations  = stats.coarse_pcg_iterations;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1607:    result.max_coarse_hessian_error =
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1609:    result.max_coarse_rhs_error = max_vector_error(gpu_rhs, expected_rhs);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1610:    result.max_coarse_solution_error = max_vector_error(gpu_solution, expected_solution);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1612:    if(gpu_solution.size() == coarse_dofs)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1614:        Eigen::Map<const Eigen::Matrix<double, coarse_dofs, 1>> solution(gpu_solution.data());
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1615:        result.coarse_relative_residual =
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1620:        result.coarse_relative_residual = std::numeric_limits<double>::infinity();
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1621:    result.reversed_block_checked        = mapping[0] > mapping[1];
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1622:    result.collapsed_offdiagonal_checked = mapping[0] == mapping[2];
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1623:    result.useful_coarsening_threshold_checked = useful_coarsening(100, 95)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1624:                                                  && !useful_coarsening(100, 96);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1625:    result.uncoarsened_reduction_skipped = !useful_coarsening(100, 100);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1636:                    && stats.coarse_pcg_converged && result.reversed_block_checked
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1638:                    && result.useful_coarsening_threshold_checked
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1639:                    && result.uncoarsened_reduction_skipped
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1641:                    && result.max_coarse_hessian_error <= 1e-11
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1642:                    && result.max_coarse_rhs_error <= 1e-12
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1643:                    && result.max_coarse_solution_error <= 1e-9
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1645:                    && result.coarse_relative_residual <= 1e-9;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1655:}  // namespace agipc
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:1:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:9:namespace agipc
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:2:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:14:    size_t coarse_nodes     = 0;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:3:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:19:    double green_strain_threshold = 0.0;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:4:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:24:    bool   useful_coarsening = false;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:5:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:26:    const char* mapping_mode = "matching";
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:6:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:27:    int    mapping_levels = 0;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:7:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:36:    size_t coarse_block_nodes     = 0;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:8:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:38:    size_t coarse_unique_triplets = 0;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:9:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:40:    size_t coarse_pcg_iterations  = 0;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:10:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:44:    double coarse_assembly_ms     = 0.0;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:11:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:45:    double coarse_pcg_ms          = 0.0;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:12:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:47:    bool   coarse_pcg_converged   = false;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:13:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:48:    bool   skipped_insufficient_coarsening = false;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:14:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:61:    double fine_correction_ms    = 0.0;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:15:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:70:    size_t coarse_nodes                  = 0;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:16:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:72:    size_t coarse_unique_triplets        = 0;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:17:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:73:    size_t coarse_pcg_iterations         = 0;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:18:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:74:    double max_coarse_hessian_error      = 0.0;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:19:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:75:    double max_coarse_rhs_error          = 0.0;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:20:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:76:    double max_coarse_solution_error     = 0.0;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:21:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:78:    double coarse_relative_residual      = 0.0;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:22:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:81:    bool   useful_coarsening_threshold_checked = false;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:23:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:82:    bool   uncoarsened_reduction_skipped = false;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:24:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:88:                          double green_strain_threshold,
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:25:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:90:                          bool use_coarse_solver = false,
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:26:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:91:                          int fine_correction_max_iterations = 50,
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:27:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:93:                          const char* mapping_mode = "matching",
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:28:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:98:bool gpu_has_useful_coarsening();
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:29:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:99:int gpu_fine_correction_max_iterations();
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:30:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cuh:113:}  // namespace agipc
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:31:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1:#include "agipc/agipc_coarsening.cuh"
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:32:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:28:namespace agipc
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:33:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:48:    bool   use_coarse_solver  = false;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:34:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:52:    bool   coarse_pcg_converged = false;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:35:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:54:    bool   useful_coarsening  = false;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:36:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:55:    double threshold          = 5e-4;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:37:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:56:    double coarse_relative_tolerance_squared = 1e-8;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:38:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:58:    int    fine_correction_max_iterations = 50;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:39:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:59:    bool   use_warp_hash = false;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:40:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:67:    size_t coarse_node_count  = 0;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:41:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:68:    size_t coarse_pcg_iterations = 0;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:42:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:69:    size_t fine_correction_iterations = 0;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:43:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:85:    cudatool::CudaDeviceBuffer<int> fine_to_coarse;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:44:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:86:    cudatool::CudaDeviceBuffer<int> next_fine_to_coarse;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:45:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:89:    cudatool::CudaDeviceBuffer<double> coarse_rhs;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:46:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:90:    cudatool::CudaDeviceBuffer<double> coarse_solution;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:47:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:91:    cudatool::CudaDeviceBuffer<double> coarse_r;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:48:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:92:    cudatool::CudaDeviceBuffer<double> coarse_z;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:49:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:93:    cudatool::CudaDeviceBuffer<double> coarse_p;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:50:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:94:    cudatool::CudaDeviceBuffer<double> coarse_ap;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:51:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:108:    std::unique_ptr<GIPCTripletMatrix> coarse_matrix;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:52:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:113:bool useful_coarsening(size_t fine_nodes, size_t coarse_nodes)
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:53:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:115:    return fine_nodes > 0 && coarse_nodes * 100 <= fine_nodes * 95;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:54:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:250:                          double threshold,
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:55:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:265:        protected_edge = increment >= threshold;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:56:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:279:__global__ void initialize_identity_mapping(int* mapping, int count)
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:57:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:283:        mapping[index] = index;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:58:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:286:__global__ void build_warp_hash_masks(const uint2* edges,
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:59:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:347:__global__ void compose_fine_mapping(const int* fine_to_current,
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:60:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:357:__global__ void count_aggregate_sizes(const int* fine_to_coarse,
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:61:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:363:        atomicAdd(&aggregate_sizes[fine_to_coarse[index]], 1);
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:62:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:366:__global__ void select_matching_candidates(const uint2* edges,
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:63:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:439:__global__ void write_mapping(const int* parent,
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:64:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:441:                              int* fine_to_coarse,
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:65:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:447:    fine_to_coarse[index] = root_prefix[parent[index]];
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:66:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:450:__global__ void map_triplets_to_coarse(const Eigen::Matrix3d* fine_values,
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:67:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:453:                                       Eigen::Matrix3d*       coarse_values,
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:68:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:454:                                       int*                   coarse_rows,
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:69:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:455:                                       int*                   coarse_cols,
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:70:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:456:                                       const int*             fine_to_coarse,
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:71:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:472:        coarse_rows[index] = 0;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:72:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:473:        coarse_cols[index] = 0;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:73:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:474:        coarse_values[index].setZero();
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:74:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:478:    int coarse_row = row < prefix_blocks
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:75:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:480:                         : prefix_blocks + fine_to_coarse[row - prefix_blocks];
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:76:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:481:    int coarse_col = col < prefix_blocks
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:77:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:483:                         : prefix_blocks + fine_to_coarse[col - prefix_blocks];
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:78:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:487:    // upper-triangular convention after mapping, and account for both halves
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:79:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:488:    // when an off-diagonal fine block collapses onto a coarse diagonal block.
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:80:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:489:    if(row != col && coarse_row == coarse_col)
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:81:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:491:    else if(coarse_row > coarse_col)
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:82:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:493:        const int temporary = coarse_row;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:83:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:494:        coarse_row          = coarse_col;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:84:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:495:        coarse_col          = temporary;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:85:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:499:    coarse_rows[index]   = coarse_row;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:86:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:500:    coarse_cols[index]   = coarse_col;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:87:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:501:    coarse_values[index] = value;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:88:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:503:        if(!isfinite(coarse_values[index].data()[entry]))
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:89:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:507:__global__ void reduce_rhs_to_coarse(const double* fine_rhs,
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:90:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:508:                                     double*       coarse_rhs,
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:91:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:509:                                     const int*    fine_to_coarse,
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:92:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:527:    const int coarse_block = fine_block < prefix_blocks
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:93:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:529:                                 : prefix_blocks + fine_to_coarse[fine_block - prefix_blocks];
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:94:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:530:    atomicAdd(coarse_rhs + coarse_block * 3 + component, value);
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:95:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:624:__global__ void prolongate_solution(const double* coarse_solution,
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:96:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:626:                                    const int*    fine_to_coarse,
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:97:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:636:    const int coarse_block = fine_block < prefix_blocks
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:98:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:638:                                 : prefix_blocks + fine_to_coarse[fine_block - prefix_blocks];
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:99:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:639:    fine_solution[index] = coarse_solution[coarse_block * 3 + component];
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:100:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:684:                          double green_strain_threshold,
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:101:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:686:                          bool use_coarse_solver,
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:102:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:687:                          int fine_correction_max_iterations,
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:103:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:689:                          const char* mapping_mode,
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:104:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:692:    if(green_strain_threshold <= 0.0)
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:105:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:693:        throw std::invalid_argument("AGIPC Green strain threshold must be positive");
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:106:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:695:        throw std::invalid_argument("AGIPC aggregation rounds must be positive");
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:107:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:696:    if(fine_correction_max_iterations <= 0)
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:108:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:697:        throw std::invalid_argument("AGIPC fine correction iteration limit must be positive");
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:109:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:698:    if(mapping_mode == nullptr
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:110:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:699:       || (std::string(mapping_mode) != "matching" && std::string(mapping_mode) != "warp-hash"))
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:111:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:700:        throw std::invalid_argument("AGIPC mapping must be matching or warp-hash");
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:112:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:702:        throw std::invalid_argument("AGIPC max mapping levels must be in 1..16");
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:113:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:704:    state.use_coarse_solver  = use_coarse_solver;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:114:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:705:    state.threshold          = green_strain_threshold;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:115:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:707:    state.fine_correction_max_iterations = fine_correction_max_iterations;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:116:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:709:    state.use_warp_hash      = std::string(mapping_mode) == "warp-hash";
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:117:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:720:    return state.enabled && state.use_coarse_solver;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:118:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:728:bool gpu_has_useful_coarsening()
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:119:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:730:    return state.useful_coarsening;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:120:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:733:int gpu_fine_correction_max_iterations()
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:121:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:735:    return state.fine_correction_max_iterations;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:122:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:809:    state.fine_to_coarse.resize(state.fem_point_count);
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:123:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:810:    state.next_fine_to_coarse.resize(state.fem_point_count);
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:124:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:814:    state.coarse_node_count = state.fem_point_count;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:125:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:817:    state.useful_coarsening = false;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:126:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:825:    state.coarse_pcg_converged = false;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:127:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:835:    stats.coarse_nodes     = state.fem_point_count;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:128:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:838:    stats.green_strain_threshold = state.threshold;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:129:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:888:                                         state.threshold,
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:130:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:894:    int coarse_nodes = static_cast<int>(state.fem_point_count);
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:131:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:895:    stats.mapping_mode = state.use_warp_hash ? "warp-hash" : "matching";
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:132:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:896:    if(state.use_warp_hash)
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:133:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:898:        initialize_identity_mapping<<<point_blocks, kThreads>>>(
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:134:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:899:            state.fine_to_coarse.data(), static_cast<int>(state.fem_point_count));
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:135:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:908:            build_warp_hash_masks<<<edge_blocks, kThreads>>>(
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:136:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:911:                state.fine_to_coarse.data(),
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:137:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:933:            compose_fine_mapping<<<point_blocks, kThreads>>>(
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:138:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:934:                state.fine_to_coarse.data(),
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:139:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:936:                state.next_fine_to_coarse.data(),
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:140:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:938:            CUDA_SAFE_CALL(cudaMemcpy(state.fine_to_coarse.data(),
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:141:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:939:                                      state.next_fine_to_coarse.data(),
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:142:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:947:            ++stats.mapping_levels;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:143:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:949:            if(next_nodes == coarse_nodes)
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:144:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:951:            coarse_nodes = next_nodes;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:145:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:956:        count_aggregate_sizes<<<point_blocks, kThreads>>>(state.fine_to_coarse.data(),
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:146:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:970:            select_matching_candidates<<<edge_blocks, kThreads>>>(
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:147:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:996:        write_mapping<<<point_blocks, kThreads>>>(state.parent.data(),
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:148:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:998:                                                   state.fine_to_coarse.data(),
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:149:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1000:        coarse_nodes = thrust::reduce(thrust::device_ptr<int>(state.root_flags.data()),
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:150:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1004:        stats.mapping_levels = 1;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:151:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1005:        stats.level_nodes[0] = static_cast<size_t>(coarse_nodes);
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:152:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1026:        thrust::device_ptr<int>(state.aggregate_sizes.data()) + coarse_nodes);
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:153:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1028:    stats.coarse_nodes     = coarse_nodes;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:154:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1030:    stats.collapsed_edges  = state.fem_point_count - coarse_nodes;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:155:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1035:                                 ? static_cast<double>(coarse_nodes)
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:156:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1038:    stats.useful_coarsening = useful_coarsening(state.fem_point_count,
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:157:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1039:                                                 static_cast<size_t>(coarse_nodes));
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:158:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1042:    state.coarse_node_count = coarse_nodes;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:159:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1043:    state.useful_coarsening = stats.useful_coarsening;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:160:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1045:    state.coarse_pcg_converged = false;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:161:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1055:       || state.fem_point_count == 0 || state.coarse_node_count == 0)
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:162:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1062:    if(!state.useful_coarsening)
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:163:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1065:        stats.coarse_block_nodes = stats.fine_block_nodes - state.fem_point_count
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:164:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1066:                                   + state.coarse_node_count;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:165:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1067:        stats.skipped_insufficient_coarsening = true;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:166:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1069:        state.coarse_pcg_converged = false;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:167:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1074:    const size_t coarse_block_nodes = prefix_blocks + state.coarse_node_count;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:168:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1086:    if(!state.coarse_matrix)
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:169:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1088:        state.coarse_matrix = std::make_unique<GIPCTripletMatrix>();
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:170:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1089:        state.coarse_matrix->init_var();
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:171:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1091:    auto& coarse_matrix = *state.coarse_matrix;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:172:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1092:    coarse_matrix.resize(static_cast<int>(coarse_block_nodes),
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:173:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1093:                         static_cast<int>(coarse_block_nodes),
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:174:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1095:    coarse_matrix.resize_collision_hash_size(fine_triplets);
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:175:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1096:    coarse_matrix.global_triplet_offset = static_cast<int>(fine_triplets);
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:176:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1097:    state.coarse_rhs.resize(coarse_block_nodes * 3);
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:177:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1098:    state.coarse_rhs.reset_zero();
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:178:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1103:    map_triplets_to_coarse<<<triplet_blocks, kThreads>>>(
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:179:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1107:        coarse_matrix.block_values(),
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:180:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1108:        coarse_matrix.block_row_indices(),
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:181:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1109:        coarse_matrix.block_col_indices(),
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:182:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1110:        state.fine_to_coarse.data(),
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:183:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1117:    reduce_rhs_to_coarse<<<rhs_blocks, kThreads>>>(fine_rhs,
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:184:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1118:                                                   state.coarse_rhs.data(),
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:185:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1119:                                                   state.fine_to_coarse.data(),
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:186:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1127:    converter.convert(coarse_matrix,
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:187:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1132:    const size_t coarse_dofs = coarse_block_nodes * 3;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:188:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1133:    state.coarse_solution.resize(coarse_dofs);
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:189:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1134:    state.coarse_solution.reset_zero();
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:190:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1135:    state.coarse_r.resize(coarse_dofs);
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:191:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1136:    state.coarse_z.resize(coarse_dofs);
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:192:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1137:    state.coarse_p.resize(coarse_dofs);
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:193:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1138:    state.coarse_ap.resize(coarse_dofs);
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:194:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1139:    state.inverse_diagonal.resize(coarse_block_nodes);
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:195:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1140:    state.diagonal_found.resize(coarse_block_nodes);
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:196:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1141:    CUDA_SAFE_CALL(cudaMemcpy(state.coarse_r.data(),
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:197:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1142:                              state.coarse_rhs.data(),
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:198:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1143:                              coarse_dofs * sizeof(double),
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:199:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1146:    const int coarse_block_launch = static_cast<int>((coarse_block_nodes + kThreads - 1) / kThreads);
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:200:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1147:    initialize_inverse_diagonal<<<coarse_block_launch, kThreads>>>(
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:201:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1150:        static_cast<int>(coarse_block_nodes));
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:202:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1151:    const int unique_triplets = coarse_matrix.h_unique_key_number;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:203:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1153:    extract_inverse_diagonal<<<unique_launch, kThreads>>>(coarse_matrix.block_values(),
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:204:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1154:                                                          coarse_matrix.block_row_indices(),
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:205:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1155:                                                          coarse_matrix.block_col_indices(),
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:206:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1160:    apply_block_diagonal<<<coarse_block_launch, kThreads>>>(state.inverse_diagonal.data(),
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:207:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1161:                                                            state.coarse_r.data(),
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:208:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1162:                                                            state.coarse_z.data(),
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:209:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1163:                                                            static_cast<int>(coarse_block_nodes));
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:210:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1164:    CUDA_SAFE_CALL(cudaMemcpy(state.coarse_p.data(),
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:211:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1165:                              state.coarse_z.data(),
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:212:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1166:                              coarse_dofs * sizeof(double),
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:213:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1171:        state.coarse_r.data(), state.coarse_r.data(), coarse_dofs);
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:214:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1173:    double rz = device_dot(state.coarse_r.data(), state.coarse_z.data(), coarse_dofs);
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:215:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1174:    const double tolerance_squared = state.coarse_relative_tolerance_squared
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:216:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1176:    const size_t max_iterations = std::min<size_t>(512, std::max<size_t>(1, coarse_dofs));
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:217:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1179:    const int dof_launch = static_cast<int>((coarse_dofs + kThreads - 1) / kThreads);
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:218:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1184:                                  coarse_matrix.block_values(),
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:219:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1185:                                  coarse_matrix.block_row_indices(),
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:220:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1186:                                  coarse_matrix.block_col_indices(),
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:221:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1188:                                  cudatool::CDenseVectorView<double>(state.coarse_p.data(),
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:222:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1189:                                                                     static_cast<int>(coarse_dofs)),
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:223:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1191:                                  cudatool::DenseVectorView<double>(state.coarse_ap.data(),
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:224:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1192:                                                                    static_cast<int>(coarse_dofs)));
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:225:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1194:            state.coarse_p.data(), state.coarse_ap.data(), coarse_dofs);
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:226:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1199:        update_solution_and_residual<<<dof_launch, kThreads>>>(state.coarse_solution.data(),
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:227:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1200:                                                               state.coarse_r.data(),
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:228:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1201:                                                               state.coarse_p.data(),
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:229:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1202:                                                               state.coarse_ap.data(),
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:230:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1204:                                                               static_cast<int>(coarse_dofs));
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:231:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1206:            state.coarse_r.data(), state.coarse_r.data(), coarse_dofs);
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:232:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1212:        apply_block_diagonal<<<coarse_block_launch, kThreads>>>(state.inverse_diagonal.data(),
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:233:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1213:                                                                state.coarse_r.data(),
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:234:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1214:                                                                state.coarse_z.data(),
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:235:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1215:                                                                static_cast<int>(coarse_block_nodes));
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:236:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1217:            state.coarse_r.data(), state.coarse_z.data(), coarse_dofs);
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:237:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1221:        update_direction<<<dof_launch, kThreads>>>(state.coarse_p.data(),
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:238:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1222:                                                   state.coarse_z.data(),
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:239:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1224:                                                   static_cast<int>(coarse_dofs));
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:240:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1231:    prolongate_solution<<<fine_dof_launch, kThreads>>>(state.coarse_solution.data(),
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:241:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1233:                                                       state.fine_to_coarse.data(),
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:242:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1240:    float coarse_assembly_ms = 0.0f;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:243:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1241:    float coarse_pcg_ms = 0.0f;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:244:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1244:        &coarse_assembly_ms, timing_start, timing_after_assembly));
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:245:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1246:        &coarse_pcg_ms, timing_after_assembly, timing_after_pcg));
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:246:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1260:    stats.coarse_block_nodes     = coarse_block_nodes;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:247:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1262:    stats.coarse_unique_triplets = coarse_matrix.h_unique_key_number;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:248:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1264:    stats.coarse_pcg_iterations  = pcg_iterations;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:249:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1268:    stats.coarse_assembly_ms     = coarse_assembly_ms;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:250:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1269:    stats.coarse_pcg_ms          = coarse_pcg_ms;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:251:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1271:    stats.coarse_pcg_converged   = residual_squared <= tolerance_squared;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:252:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1273:    state.coarse_pcg_iterations  = pcg_iterations;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:253:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1274:    state.coarse_pcg_converged   = stats.coarse_pcg_converged;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:254:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1285:    if(!state.enabled || !state.initialized || !state.useful_coarsening
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:255:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1286:       || !state.coarse_pcg_converged || !state.coarse_matrix
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:256:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1447:    float fine_correction_ms = 0.0f;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:257:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1448:    CUDA_SAFE_CALL(cudaEventElapsedTime(&fine_correction_ms, timing_start, timing_end));
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:258:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1466:    stats.fine_correction_ms    = fine_correction_ms;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:259:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1472:    state.fine_correction_iterations = iterations;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:260:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1473:    state.fine_solution_ready = state.coarse_pcg_converged && invalid_entries == 0
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:261:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1481:       || state.fine_solution.size() != dofs || !state.useful_coarsening)
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:262:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1488:        *total_iterations = state.coarse_pcg_iterations + state.fine_correction_iterations;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:263:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1498:    constexpr int coarse_nodes = 3;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:264:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1500:    constexpr int coarse_dofs  = coarse_nodes * 3;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:265:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1501:    const std::vector<int> mapping = {1, 0, 1, 2};
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:266:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1539:    state.coarse_relative_tolerance_squared = 1e-20;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:267:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1541:    state.coarse_node_count = coarse_nodes;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:268:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1542:    state.useful_coarsening = useful_coarsening(fine_nodes, coarse_nodes);
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:269:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1543:    state.fine_to_coarse.copy_from_host(mapping);
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:270:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1546:    Eigen::Matrix<double, coarse_dofs, fine_dofs> restriction =
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:271:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1547:        Eigen::Matrix<double, coarse_dofs, fine_dofs>::Zero();
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:272:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1549:        restriction.block<3, 3>(mapping[fine] * 3, fine * 3).setIdentity();
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:273:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1550:    const Eigen::Matrix<double, coarse_dofs, coarse_dofs> expected_hessian =
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:274:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1552:    const Eigen::Matrix<double, coarse_dofs, 1> expected_rhs = restriction * fine_rhs_host;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:275:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1553:    const Eigen::Matrix<double, coarse_dofs, 1> expected_solution =
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:276:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1564:    if(stats.available && state.coarse_matrix)
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:277:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1566:        const int unique = state.coarse_matrix->h_unique_key_number;
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:278:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1570:        state.coarse_matrix->m_block_values.copy_to_host(all_values);
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:279:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1571:        state.coarse_matrix->m_block_row_indices.copy_to_host(all_rows);
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:280:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1572:        state.coarse_matrix->m_block_col_indices.copy_to_host(all_cols);
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:281:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1576:        state.coarse_rhs.copy_to_host(gpu_rhs);
+.\实验十三\code\Stiff-GIPC-c499-performance\reports\agipc_reproduction\audit_search.txt:282:.\实验十三\code\Stiff-GIPC\StiffGIPC\agipc\agipc_coarsening.cu:1577:        state.coarse_solution.copy_to_host(gpu_solutio
+.\实验十三\code\Stiff-GIPC-c499-performance\tests\runtime_options_tests.cpp:38:        require(result.options.agipc_threshold == 5e-5,
+.\实验十三\code\Stiff-GIPC-c499-performance\tests\runtime_options_tests.cpp:39:                "paper reproduction threshold must default to 5e-5");
+.\实验十三\code\Stiff-GIPC-c499-performance\tests\runtime_options_tests.cpp:40:        require(result.options.agipc_max_levels == 8, "AGIPC must default to eight levels");
+.\实验十三\code\Stiff-GIPC-c499-performance\tests\runtime_options_tests.cpp:41:        require(result.options.agipc_fine_correction_iterations == 10,
+.\实验十三\code\Stiff-GIPC-c499-performance\tests\runtime_options_tests.cpp:42:                "AGIPC must default to ten fine corrections");
+.\实验十三\code\Stiff-GIPC-c499-performance\tests\runtime_options_tests.cpp:58:                                   "agipc",
+.\实验十三\code\Stiff-GIPC-c499-performance\tests\runtime_options_tests.cpp:70:                                   "--agipc-threshold",
+.\实验十三\code\Stiff-GIPC-c499-performance\tests\runtime_options_tests.cpp:72:                                   "--agipc-mapping",
+.\实验十三\code\Stiff-GIPC-c499-performance\tests\runtime_options_tests.cpp:73:                                   "warp-hash",
+.\实验十三\code\Stiff-GIPC-c499-performance\tests\runtime_options_tests.cpp:74:                                   "--agipc-max-levels",
+.\实验十三\code\Stiff-GIPC-c499-performance\tests\runtime_options_tests.cpp:76:                                   "--agipc-fine-correction-iterations",
+.\实验十三\code\Stiff-GIPC-c499-performance\tests\runtime_options_tests.cpp:78:                                   "--agipc-diagnostics"});
+.\实验十三\code\Stiff-GIPC-c499-performance\tests\runtime_options_tests.cpp:80:        require(result.options.solver == gipc::SolverMode::AGIPC, "AGIPC solver must be selected");
+.\实验十三\code\Stiff-GIPC-c499-performance\tests\runtime_options_tests.cpp:85:        require(result.options.agipc_mapping == "warp-hash", "mapping mode must be retained");
+.\实验十三\code\Stiff-GIPC-c499-performance\tests\runtime_options_tests.cpp:86:        require(result.options.agipc_diagnostics, "diagnostics flag must be retained");
+.\实验十三\code\Stiff-GIPC-c499-performance\tests\runtime_options_tests.cpp:90:        const auto result = parse({"gipc", "--agipc-mapping", "unknown"});
+.\实验十三\code\Stiff-GIPC-c499-performance\tests\runtime_options_tests.cpp:92:                "unknown AGIPC mapping must be rejected with exit code 2");
+.\实验十三\code\Stiff-GIPC-c499-performance\tests\runtime_options_tests.cpp:244:        require(result.ok, "the experimental threshold-8 hybrid SpMV must parse");
+.\实验十三\code\Stiff-GIPC-c499-performance\tests\runtime_options_tests.cpp:246:                "the threshold-8 hybrid SpMV must be retained by the parser");
+.\实验十三\code\Stiff-GIPC-c499-performance\tests\runtime_options_tests.cpp:261:        require(result.ok, "the experimental threshold-16 hybrid SpMV must parse");
+.\实验十三\code\Stiff-GIPC-c499-performance\tests\runtime_options_tests.cpp:263:                "the threshold-16 hybrid SpMV must be retained by the parser");
+.\实验十三\code\Stiff-GIPC-c499-performance\tests\runtime_options_tests.cpp:328:        require(result.help.find("--agipc-self-test") != std::string::npos,
+.\实验十三\code\Stiff-GIPC-c499-performance\tests\test_executable_cli.py:36:    def test_invalid_mapping_exits_two_before_gpu_startup(self) -> None:
+.\实验十三\code\Stiff-GIPC-c499-performance\tests\test_executable_cli.py:37:        result = self.run_cli("--agipc-mapping", "unknown")
+.\实验十三\code\Stiff-GIPC-c499-performance\tests\test_executable_cli.py:39:        self.assertIn("mapping", result.stderr.lower())
+.\实验十三\code\Stiff-GIPC\StiffGIPC\abd_system\abd_system.h:166:    // mapping q to x
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\abd_system\abd_system.h:166:    // mapping q to x
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:25:#include "agipc/agipc_coarsening.cuh"
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:1833:    double gassThreshold = 1e-6;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:1866:            if(dis * dis < gassThreshold * dHat)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:1871:                       * (6 * gassThreshold + 2 * gassThreshold * log(gassThreshold)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:1872:                          - 7 * gassThreshold * gassThreshold
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:1873:                          - 6 * gassThreshold * gassThreshold * log(gassThreshold) + 1))
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:1874:                    / gassThreshold;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:1883:            if(dis * dis < gassThreshold * dHat)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:1887:                      * (4 * gassThreshold + log(gassThreshold)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:1888:                         - 3 * gassThreshold * gassThreshold * log(gassThreshold) * log(gassThreshold)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:1889:                         + 6 * gassThreshold * log(gassThreshold) - 2 * gassThreshold * gassThreshold
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:1890:                         + gassThreshold * log(gassThreshold) * log(gassThreshold)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:1891:                         - 7 * gassThreshold * gassThreshold * log(gassThreshold) - 2))
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:1892:                    / gassThreshold;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:2425:                if(dis * dis < gassThreshold * dHat)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:2430:                           * (6 * gassThreshold + 2 * gassThreshold * log(gassThreshold)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:2431:                              - 7 * gassThreshold * gassThreshold
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:2432:                              - 6 * gassThreshold * gassThreshold * log(gassThreshold) + 1))
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:2433:                        / gassThreshold;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:2443:                if(dis * dis < gassThreshold * dHat)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:2447:                          * (4 * gassThreshold + log(gassThreshold)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:2448:                             - 3 * gassThreshold * gassThreshold
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:2449:                                   * log(gassThreshold) * log(gassThreshold)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:2450:                             + 6 * gassThreshold * log(gassThreshold) - 2 * gassThreshold * gassThreshold
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:2451:                             + gassThreshold * log(gassThreshold) * log(gassThreshold)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:2452:                             - 7 * gassThreshold * gassThreshold * log(gassThreshold) - 2))
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:2453:                        / gassThreshold;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:2830:                if(dis * dis < gassThreshold * dHat)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:2835:                           * (6 * gassThreshold + 2 * gassThreshold * log(gassThreshold)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:2836:                              - 7 * gassThreshold * gassThreshold
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:2837:                              - 6 * gassThreshold * gassThreshold * log(gassThreshold) + 1))
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:2838:                        / gassThreshold;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:2848:                if(dis * dis < gassThreshold * dHat)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:2852:                          * (4 * gassThreshold + log(gassThreshold)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:2853:                             - 3 * gassThreshold * gassThreshold
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:2854:                                   * log(gassThreshold) * log(gassThreshold)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:2855:                             + 6 * gassThreshold * log(gassThreshold) - 2 * gassThreshold * gassThreshold
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:2856:                             + gassThreshold * log(gassThreshold) * log(gassThreshold)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:2857:                             - 7 * gassThreshold * gassThreshold * log(gassThreshold) - 2))
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:2858:                        / gassThreshold;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:3004:            if(dis * dis < gassThreshold * dHat)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:3009:                       * (6 * gassThreshold + 2 * gassThreshold * log(gassThreshold)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:3010:                          - 7 * gassThreshold * gassThreshold
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:3011:                          - 6 * gassThreshold * gassThreshold * log(gassThreshold) + 1))
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:3012:                    / gassThreshold;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:3021:            if(dis * dis < gassThreshold * dHat)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:3025:                      * (4 * gassThreshold + log(gassThreshold)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:3026:                         - 3 * gassThreshold * gassThreshold * log(gassThreshold) * log(gassThreshold)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:3027:                         + 6 * gassThreshold * log(gassThreshold) - 2 * gassThreshold * gassThreshold
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:3028:                         + gassThreshold * log(gassThreshold) * log(gassThreshold)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:3029:                         - 7 * gassThreshold * gassThreshold * log(gassThreshold) - 2))
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:3030:                    / gassThreshold;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:3130:    double gassThreshold = 1e-6;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:3260:            if(dis * dis < gassThreshold * dHat)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:3265:                       * (6 * gassThreshold + 2 * gassThreshold * log(gassThreshold)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:3266:                          - 7 * gassThreshold * gassThreshold
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:3267:                          - 6 * gassThreshold * gassThreshold * log(gassThreshold) + 1))
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:3268:                    / gassThreshold;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:3277:            if(dis * dis < gassThreshold * dHat)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:3281:                      * (4 * gassThreshold + log(gassThreshold)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:3282:                         - 3 * gassThreshold * gassThreshold * log(gassThreshold) * log(gassThreshold)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:3283:                         + 6 * gassThreshold * log(gassThreshold) - 2 * gassThreshold * gassThreshold
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:3284:                         + gassThreshold * log(gassThreshold) * log(gassThreshold)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:3285:                         - 7 * gassThreshold * gassThreshold * log(gassThreshold) - 2))
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:3286:                    / gassThreshold;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:4047:                if(dis * dis < gassThreshold * dHat)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:4052:                           * (6 * gassThreshold + 2 * gassThreshold * log(gassThreshold)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:4053:                              - 7 * gassThreshold * gassThreshold
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:4054:                              - 6 * gassThreshold * gassThreshold * log(gassThreshold) + 1))
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:4055:                        / gassThreshold;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:4065:                if(dis * dis < gassThreshold * dHat)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:4069:                          * (4 * gassThreshold + log(gassThreshold)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:4070:                             - 3 * gassThreshold * gassThreshold
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:4071:                                   * log(gassThreshold) * log(gassThreshold)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:4072:                             + 6 * gassThreshold * log(gassThreshold) - 2 * gassThreshold * gassThreshold
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:4073:                             + gassThreshold * log(gassThreshold) * log(gassThreshold)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:4074:                             - 7 * gassThreshold * gassThreshold * log(gassThreshold) - 2))
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:4075:                        / gassThreshold;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:4594:                if(dis * dis < gassThreshold * dHat)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:4599:                           * (6 * gassThreshold + 2 * gassThreshold * log(gassThreshold)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:4600:                              - 7 * gassThreshold * gassThreshold
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:4601:                              - 6 * gassThreshold * gassThreshold * log(gassThreshold) + 1))
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:4602:                        / gassThreshold;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:4612:                if(dis * dis < gassThreshold * dHat)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:4616:                          * (4 * gassThreshold + log(gassThreshold)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:4617:                             - 3 * gassThreshold * gassThreshold
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:4618:                                   * log(gassThreshold) * log(gassThreshold)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:4619:                             + 6 * gassThreshold * log(gassThreshold) - 2 * gassThreshold * gassThreshold
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:4620:                             + gassThreshold * log(gassThreshold) * log(gassThreshold)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:4621:                             - 7 * gassThreshold * gassThreshold * log(gassThreshold) - 2))
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:4622:                        / gassThreshold;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:4791:            if(dis * dis < gassThreshold * dHat)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:4796:                       * (6 * gassThreshold + 2 * gassThreshold * log(gassThreshold)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:4797:                          - 7 * gassThreshold * gassThreshold
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:4798:                          - 6 * gassThreshold * gassThreshold * log(gassThreshold) + 1))
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:4799:                    / gassThreshold;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:4808:            if(dis * dis < gassThreshold * dHat)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:4812:                      * (4 * gassThreshold + log(gassThreshold)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:4813:                         - 3 * gassThreshold * gassThreshold * log(gassThreshold) * log(gassThreshold)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:4814:                         + 6 * gassThreshold * log(gassThreshold) - 2 * gassThreshold * gassThreshold
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:4815:                         + gassThreshold * log(gassThreshold) * log(gassThreshold)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:4816:                         - 7 * gassThreshold * gassThreshold * log(gassThreshold) - 2))
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:4817:                    / gassThreshold;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:10776:    constexpr int report_line_search_threshold = 8;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:10778:    while((testingE > lastEnergyVal + c1m * alpha) && numOfLineSearch <= report_line_search_threshold)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:10790:    if(numOfLineSearch > report_line_search_threshold)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:10899:        cudaEvent_t start, end_build_gh, end_mapping, end0, end1, end2, end3, end4;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:10902:        cudaEventCreate(&end_mapping);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:10915:        if(agipc::gpu_shadow_enabled())
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:10917:            const auto shadow = agipc::update_gpu_shadow(TetMesh, k);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:10919:                                     ? static_cast<double>(shadow.coarse_nodes)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:10922:            printf("agipc_gpu_shadow: newton=%d has_previous=%d history_source=%s mapping=%s "
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:10923:                   "levels=%d active_dof_ratio=%.6f fine=%zu coarse=%zu "
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:10925:                   "max_aggregate=%zu threshold=%.8g strain_tag_ms=%.6f "
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:10930:                   shadow.mapping_mode,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:10931:                   shadow.mapping_levels,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:10934:                   shadow.coarse_nodes,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:10940:                   shadow.green_strain_threshold,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:10945:            newton_stats["agipc_shadow"]["mode"]             = "gpu_mapping_only";
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:10946:            newton_stats["agipc_shadow"]["has_previous"]     = shadow.has_previous;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:10947:            newton_stats["agipc_shadow"]["history_source"]   = shadow.history_source;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:10948:            newton_stats["agipc_shadow"]["mapping_mode"]     = shadow.mapping_mode;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:10949:            newton_stats["agipc_shadow"]["mapping_levels"]   = shadow.mapping_levels;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:10950:            newton_stats["agipc_shadow"]["active_dof_ratio"] = shadow.active_dof_ratio;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:10951:            newton_stats["agipc_shadow"]["fine_nodes"]       = shadow.fine_nodes;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:10952:            newton_stats["agipc_shadow"]["coarse_nodes"]     = shadow.coarse_nodes;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:10953:            newton_stats["agipc_shadow"]["coarse_ratio"]     = ratio;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:10954:            newton_stats["agipc_shadow"]["candidate_edges"]  = shadow.candidate_edges;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:10955:            newton_stats["agipc_shadow"]["protected_edges"]  = shadow.protected_edges;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:10956:            newton_stats["agipc_shadow"]["collapsed_edges"]  = shadow.collapsed_edges;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:10957:            newton_stats["agipc_shadow"]["max_aggregate"]    = shadow.max_aggregate;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:10958:            newton_stats["agipc_shadow"]["green_strain_threshold"] =
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:10959:                shadow.green_strain_threshold;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:10960:            newton_stats["agipc_shadow"]["strain_tag_ms"] = shadow.strain_tag_ms;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:10961:            newton_stats["agipc_shadow"]["aggregation_ms"] = shadow.aggregation_ms;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:10962:            newton_stats["agipc_shadow"]["useful_coarsening"] =
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:10963:                shadow.useful_coarsening;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:10964:            for(int level = 0; level < shadow.mapping_levels; ++level)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:10966:                auto& level_stats = newton_stats["agipc_shadow"]["levels"][level];
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:10970:                printf("agipc_gpu_mapping_level: newton=%d level=%d nodes=%zu elapsed_ms=%.6f\n",
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:10978:        cudaEventRecord(end_mapping);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:10983:        bool gradVanish = (distToOpt_PN < sqrt(Newton_solver_threshold * Newton_solver_threshold
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:10989:        //       2 * sqrt(Newton_solver_threshold * Newton_solver_threshold * bboxDiagSize2)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:10994:        //                        * sqrt(Newton_solver_threshold * Newton_solver_threshold * bboxDiagSize2)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:11001:            float adaptive_mapping_ms = 0.0f;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:11003:            cudaEventElapsedTime(&adaptive_mapping_ms, end_build_gh, end_mapping);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:11006:            timing["adaptive_mapping"]  = adaptive_mapping_ms;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:11013:            cudaEventDestroy(end_mapping);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:11073:        float build_gh_ms, adaptive_mapping_ms, time00, time11, time22, time33, time44;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:11075:        cudaEventElapsedTime(&adaptive_mapping_ms, end_build_gh, end_mapping);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:11089:        timing["adaptive_mapping"] = adaptive_mapping_ms;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:11103:        (cudaEventDestroy(end_mapping));
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:11118:        if(beta <= Newton_solver_threshold)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cu:11201:    agipc::begin_gpu_shadow_frame();
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cuh:136:    double Newton_solver_threshold = 0.0;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\GIPC.cuh:137:    double pcg_threshold           = 0.0;
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:1842:    double gassThreshold = 1e-6;
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:1875:            if(dis * dis < gassThreshold * dHat)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:1880:                       * (6 * gassThreshold + 2 * gassThreshold * log(gassThreshold)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:1881:                          - 7 * gassThreshold * gassThreshold
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:1882:                          - 6 * gassThreshold * gassThreshold * log(gassThreshold) + 1))
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:1883:                    / gassThreshold;
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:1892:            if(dis * dis < gassThreshold * dHat)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:1896:                      * (4 * gassThreshold + log(gassThreshold)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:1897:                         - 3 * gassThreshold * gassThreshold * log(gassThreshold) * log(gassThreshold)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:1898:                         + 6 * gassThreshold * log(gassThreshold) - 2 * gassThreshold * gassThreshold
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:1899:                         + gassThreshold * log(gassThreshold) * log(gassThreshold)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:1900:                         - 7 * gassThreshold * gassThreshold * log(gassThreshold) - 2))
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:1901:                    / gassThreshold;
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:2434:                if(dis * dis < gassThreshold * dHat)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:2439:                           * (6 * gassThreshold + 2 * gassThreshold * log(gassThreshold)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:2440:                              - 7 * gassThreshold * gassThreshold
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:2441:                              - 6 * gassThreshold * gassThreshold * log(gassThreshold) + 1))
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:2442:                        / gassThreshold;
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:2452:                if(dis * dis < gassThreshold * dHat)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:2456:                          * (4 * gassThreshold + log(gassThreshold)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:2457:                             - 3 * gassThreshold * gassThreshold
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:2458:                                   * log(gassThreshold) * log(gassThreshold)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:2459:                             + 6 * gassThreshold * log(gassThreshold) - 2 * gassThreshold * gassThreshold
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:2460:                             + gassThreshold * log(gassThreshold) * log(gassThreshold)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:2461:                             - 7 * gassThreshold * gassThreshold * log(gassThreshold) - 2))
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:2462:                        / gassThreshold;
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:2839:                if(dis * dis < gassThreshold * dHat)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:2844:                           * (6 * gassThreshold + 2 * gassThreshold * log(gassThreshold)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:2845:                              - 7 * gassThreshold * gassThreshold
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:2846:                              - 6 * gassThreshold * gassThreshold * log(gassThreshold) + 1))
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:2847:                        / gassThreshold;
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:2857:                if(dis * dis < gassThreshold * dHat)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:2861:                          * (4 * gassThreshold + log(gassThreshold)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:2862:                             - 3 * gassThreshold * gassThreshold
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:2863:                                   * log(gassThreshold) * log(gassThreshold)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:2864:                             + 6 * gassThreshold * log(gassThreshold) - 2 * gassThreshold * gassThreshold
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:2865:                             + gassThreshold * log(gassThreshold) * log(gassThreshold)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:2866:                             - 7 * gassThreshold * gassThreshold * log(gassThreshold) - 2))
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:2867:                        / gassThreshold;
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:3013:            if(dis * dis < gassThreshold * dHat)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:3018:                       * (6 * gassThreshold + 2 * gassThreshold * log(gassThreshold)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:3019:                          - 7 * gassThreshold * gassThreshold
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:3020:                          - 6 * gassThreshold * gassThreshold * log(gassThreshold) + 1))
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:3021:                    / gassThreshold;
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:3030:            if(dis * dis < gassThreshold * dHat)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:3034:                      * (4 * gassThreshold + log(gassThreshold)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:3035:                         - 3 * gassThreshold * gassThreshold * log(gassThreshold) * log(gassThreshold)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:3036:                         + 6 * gassThreshold * log(gassThreshold) - 2 * gassThreshold * gassThreshold
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:3037:                         + gassThreshold * log(gassThreshold) * log(gassThreshold)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:3038:                         - 7 * gassThreshold * gassThreshold * log(gassThreshold) - 2))
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:3039:                    / gassThreshold;
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:3139:    double gassThreshold = 1e-6;
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:3269:            if(dis * dis < gassThreshold * dHat)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:3274:                       * (6 * gassThreshold + 2 * gassThreshold * log(gassThreshold)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:3275:                          - 7 * gassThreshold * gassThreshold
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:3276:                          - 6 * gassThreshold * gassThreshold * log(gassThreshold) + 1))
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:3277:                    / gassThreshold;
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:3286:            if(dis * dis < gassThreshold * dHat)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:3290:                      * (4 * gassThreshold + log(gassThreshold)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:3291:                         - 3 * gassThreshold * gassThreshold * log(gassThreshold) * log(gassThreshold)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:3292:                         + 6 * gassThreshold * log(gassThreshold) - 2 * gassThreshold * gassThreshold
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:3293:                         + gassThreshold * log(gassThreshold) * log(gassThreshold)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:3294:                         - 7 * gassThreshold * gassThreshold * log(gassThreshold) - 2))
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:3295:                    / gassThreshold;
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:4056:                if(dis * dis < gassThreshold * dHat)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:4061:                           * (6 * gassThreshold + 2 * gassThreshold * log(gassThreshold)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:4062:                              - 7 * gassThreshold * gassThreshold
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:4063:                              - 6 * gassThreshold * gassThreshold * log(gassThreshold) + 1))
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:4064:                        / gassThreshold;
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:4074:                if(dis * dis < gassThreshold * dHat)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:4078:                          * (4 * gassThreshold + log(gassThreshold)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:4079:                             - 3 * gassThreshold * gassThreshold
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:4080:                                   * log(gassThreshold) * log(gassThreshold)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:4081:                             + 6 * gassThreshold * log(gassThreshold) - 2 * gassThreshold * gassThreshold
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:4082:                             + gassThreshold * log(gassThreshold) * log(gassThreshold)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:4083:                             - 7 * gassThreshold * gassThreshold * log(gassThreshold) - 2))
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:4084:                        / gassThreshold;
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:4603:                if(dis * dis < gassThreshold * dHat)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:4608:                           * (6 * gassThreshold + 2 * gassThreshold * log(gassThreshold)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:4609:                              - 7 * gassThreshold * gassThreshold
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:4610:                              - 6 * gassThreshold * gassThreshold * log(gassThreshold) + 1))
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:4611:                        / gassThreshold;
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:4621:                if(dis * dis < gassThreshold * dHat)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:4625:                          * (4 * gassThreshold + log(gassThreshold)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:4626:                             - 3 * gassThreshold * gassThreshold
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:4627:                                   * log(gassThreshold) * log(gassThreshold)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:4628:                             + 6 * gassThreshold * log(gassThreshold) - 2 * gassThreshold * gassThreshold
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:4629:                             + gassThreshold * log(gassThreshold) * log(gassThreshold)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:4630:                             - 7 * gassThreshold * gassThreshold * log(gassThreshold) - 2))
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:4631:                        / gassThreshold;
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:4800:            if(dis * dis < gassThreshold * dHat)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:4805:                       * (6 * gassThreshold + 2 * gassThreshold * log(gassThreshold)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:4806:                          - 7 * gassThreshold * gassThreshold
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:4807:                          - 6 * gassThreshold * gassThreshold * log(gassThreshold) + 1))
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:4808:                    / gassThreshold;
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:4817:            if(dis * dis < gassThreshold * dHat)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:4821:                      * (4 * gassThreshold + log(gassThreshold)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:4822:                         - 3 * gassThreshold * gassThreshold * log(gassThreshold) * log(gassThreshold)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:4823:                         + 6 * gassThreshold * log(gassThreshold) - 2 * gassThreshold * gassThreshold
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:4824:                         + gassThreshold * log(gassThreshold) * log(gassThreshold)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:4825:                         - 7 * gassThreshold * gassThreshold * log(gassThreshold) - 2))
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:4826:                    / gassThreshold;
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:10785:    constexpr int report_line_search_threshold = 8;
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:10787:    while((testingE > lastEnergyVal + c1m * alpha) && numOfLineSearch <= report_line_search_threshold)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:10799:    if(numOfLineSearch > report_line_search_threshold)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:10922:        bool gradVanish = (distToOpt_PN < sqrt(Newton_solver_threshold * Newton_solver_threshold
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:10928:        //       2 * sqrt(Newton_solver_threshold * Newton_solver_threshold * bboxDiagSize2)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cu:10933:        //                        * sqrt(Newton_solver_threshold * Newton_solver_threshold * bboxDiagSize2)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cuh:136:    double Newton_solver_threshold = 0.0;
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\GIPC.cuh:137:    double pcg_threshold           = 0.0;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gipc\gipc.cu:53:    cfg.global_tol_rate = pcg_threshold;
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\gipc\gipc.cu:76:    cfg.global_tol_rate = pcg_threshold;
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\gipc\runtime_options.cpp:25:           "  --solver stiffgipc|agipc\n"
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\gipc\runtime_options.cpp:43:           "  --agipc-threshold <VALUE>\n"
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\gipc\runtime_options.cpp:44:           "  --agipc-mapping matching|warp-hash\n"
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\gipc\runtime_options.cpp:45:           "  --agipc-max-levels <N>\n"
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\gipc\runtime_options.cpp:46:           "  --agipc-fine-correction-iterations <N>\n"
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\gipc\runtime_options.cpp:47:           "  --agipc-diagnostics\n"
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\gipc\runtime_options.cpp:48:           "  --agipc-self-test\n"
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\gipc\runtime_options.cpp:87:                else if(value == "agipc")
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\gipc\runtime_options.cpp:88:                    options.solver = SolverMode::AGIPC;
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\gipc\runtime_options.cpp:90:                    return invalid(options, "solver must be stiffgipc or agipc");
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\gipc\runtime_options.cpp:155:            else if(argument == "--agipc-threshold")
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\gipc\runtime_options.cpp:156:                options.agipc_threshold = std::stod(require_value(i, argument));
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\gipc\runtime_options.cpp:157:            else if(argument == "--agipc-mapping")
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\gipc\runtime_options.cpp:158:                options.agipc_mapping = require_value(i, argument);
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\gipc\runtime_options.cpp:159:            else if(argument == "--agipc-max-levels")
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\gipc\runtime_options.cpp:160:                options.agipc_max_levels = std::stoi(require_value(i, argument));
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\gipc\runtime_options.cpp:161:            else if(argument == "--agipc-fine-correction-iterations")
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\gipc\runtime_options.cpp:162:                options.agipc_fine_correction_iterations =
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\gipc\runtime_options.cpp:164:            else if(argument == "--agipc-diagnostics")
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\gipc\runtime_options.cpp:165:                options.agipc_diagnostics = true;
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\gipc\runtime_options.cpp:166:            else if(argument == "--agipc-self-test")
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\gipc\runtime_options.cpp:167:                options.agipc_self_test = true;
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\gipc\runtime_options.cpp:277:    if(options.young_modulus <= 0.0 || options.dt <= 0.0 || options.agipc_threshold <= 0.0)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\gipc\runtime_options.cpp:278:        return invalid(options, "Young modulus, dt, and AGIPC threshold must be positive");
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\gipc\runtime_options.cpp:279:    if(options.agipc_mapping != "matching" && options.agipc_mapping != "warp-hash")
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\gipc\runtime_options.cpp:280:        return invalid(options, "AGIPC mapping must be matching or warp-hash");
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\gipc\runtime_options.cpp:281:    if(options.agipc_max_levels < 1 || options.agipc_max_levels > 16)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\gipc\runtime_options.cpp:282:        return invalid(options, "AGIPC max levels must be in 1..16");
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\gipc\runtime_options.cpp:283:    if(options.agipc_fine_correction_iterations <= 0)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\gipc\runtime_options.cpp:284:        return invalid(options, "AGIPC fine correction iterations must be positive");
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\gipc\runtime_options.h:11:    AGIPC
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\gipc\runtime_options.h:32:    double      agipc_threshold = 5e-5;
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\gipc\runtime_options.h:33:    std::string agipc_mapping   = "warp-hash";
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\gipc\runtime_options.h:34:    int         agipc_max_levels = 8;
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\gipc\runtime_options.h:35:    int         agipc_fine_correction_iterations = 10;
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\gipc\runtime_options.h:36:    bool        agipc_diagnostics = false;
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\gipc\runtime_options.h:37:    bool        agipc_self_test   = false;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:41:#include "agipc/agipc_coarsening.cuh"
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:84:bool  agipcShadow   = false;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:85:bool  agipcGpuShadow = false;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:86:bool  agipcGpuSolve  = false;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:87:bool  agipcSelfTest  = false;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:88:bool  agipcDiagnostics = false;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:89:double agipcEdgeThreshold = 5e-4;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:90:int    agipcAggregationRounds = 8;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:91:int    agipcFineCorrectionIterations = 50;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:92:std::string agipcMapping = "matching";
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:93:int    agipcMaxLevels = 8;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:121:std::vector<double3> agipcRestVertexes;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:122:std::vector<double3> agipcPreviousNewtonVertexes;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:298:struct AgipcShadowStats
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:301:    size_t coarseNodes     = 0;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:308:AgipcShadowStats computeAgipcShadowStats(const std::vector<double3>& currentVertexes,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:311:    AgipcShadowStats stats;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:345:        const auto rest = make_double3(agipcRestVertexes[edge.x].x - agipcRestVertexes[edge.y].x,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:346:                                       agipcRestVertexes[edge.x].y - agipcRestVertexes[edge.y].y,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:347:                                       agipcRestVertexes[edge.x].z - agipcRestVertexes[edge.y].z);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:361:        if(fixed || strainIncrement >= agipcEdgeThreshold || aggregateFull)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:385:    stats.coarseNodes = uniqueRoots.size();
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:959:    ipc.Newton_solver_threshold = 1e-2;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:960:    ipc.pcg_threshold           = 1e-4;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:1001:        infile >> ignoreToken >> ipc.pcg_threshold;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:1002:        infile >> ignoreToken >> ipc.Newton_solver_threshold;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:1471:    agipcRestVertexes = tetMesh.vertexes;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:1472:    agipcPreviousNewtonVertexes = agipcRestVertexes;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:1780:    if(agipcGpuShadow)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:1782:        agipc::initialize_gpu_shadow(tetMesh);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:1783:        printf("agipc_gpu_shadow initialized: fine_nodes=%zu threshold=%.8g rounds=%d\n",
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:1785:               agipcEdgeThreshold,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:1786:               agipcAggregationRounds);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:1913:    if(agipcShadow)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:1915:        const auto stats = computeAgipcShadowStats(tetMesh.vertexes, agipcPreviousNewtonVertexes);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:1917:                                 ? static_cast<double>(stats.coarseNodes) / stats.fineNodes
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:1919:        printf("agipc_shadow: frame=%d fine=%zu coarse=%zu ratio=%.6f candidate_edges=%zu "
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:1920:               "protected_edges=%zu collapsed_edges=%zu max_aggregate=%zu threshold=%.8g "
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:1924:               stats.coarseNodes,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:1930:               agipcEdgeThreshold);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:1931:        agipcPreviousNewtonVertexes = tetMesh.vertexes;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:2199:        else if(argument == "--agipc-shadow")
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:2201:            agipcShadow = true;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:2203:        else if(argument == "--agipc-gpu-shadow")
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:2205:            agipcGpuShadow = true;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:2207:        else if(argument == "--agipc-gpu-solve")
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:2209:            agipcGpuShadow = true;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:2210:            agipcGpuSolve  = true;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:2212:        else if(argument == "--agipc-self-test")
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:2214:            agipcSelfTest = true;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:2216:        else if(argument == "--agipc-diagnostics")
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:2218:            agipcDiagnostics = true;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:2220:        else if(argument == "--agipc-threshold" && i + 1 < argc)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:2222:            agipcEdgeThreshold = std::stod(argv[++i]);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:2224:        else if(argument == "--agipc-rounds" && i + 1 < argc)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:2226:            agipcAggregationRounds = std::stoi(argv[++i]);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:2228:        else if(argument == "--agipc-fine-correction-iterations" && i + 1 < argc)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:2230:            agipcFineCorrectionIterations = std::stoi(argv[++i]);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:2232:        else if(argument == "--agipc-mapping" && i + 1 < argc)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:2234:            agipcMapping = argv[++i];
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:2236:        else if(argument == "--agipc-max-levels" && i + 1 < argc)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:2238:            agipcMaxLevels = std::stoi(argv[++i]);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:2247:                         "[--agipc-shadow | --agipc-gpu-shadow | --agipc-gpu-solve | "
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:2248:                         "--agipc-self-test] "
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:2249:                         "[--agipc-diagnostics] "
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:2250:                         "[--agipc-mapping matching|warp-hash --agipc-max-levels N] "
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:2251:                         "[--agipc-threshold VALUE --agipc-rounds N "
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:2252:                         "--agipc-fine-correction-iterations N]\n";
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:2262:    if(agipcSelfTest)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:2264:        const auto result = agipc::run_algebraic_self_test();
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:2268:                  << "  \"coarse_nodes\": " << result.coarse_nodes << ",\n"
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:2270:                  << "  \"coarse_unique_triplets\": " << result.coarse_unique_triplets << ",\n"
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:2271:                  << "  \"coarse_pcg_iterations\": " << result.coarse_pcg_iterations << ",\n"
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:2272:                  << "  \"max_coarse_hessian_error\": " << result.max_coarse_hessian_error << ",\n"
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:2273:                  << "  \"max_coarse_rhs_error\": " << result.max_coarse_rhs_error << ",\n"
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:2274:                  << "  \"max_coarse_solution_error\": " << result.max_coarse_solution_error << ",\n"
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:2276:                  << "  \"coarse_relative_residual\": " << result.coarse_relative_residual << ",\n"
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:2281:                  << "  \"useful_coarsening_threshold_checked\": "
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:2282:                  << (result.useful_coarsening_threshold_checked ? "true" : "false") << ",\n"
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:2283:                  << "  \"uncoarsened_reduction_skipped\": "
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:2284:                  << (result.uncoarsened_reduction_skipped ? "true" : "false") << ",\n"
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:2295:       || agipcEdgeThreshold <= 0.0 || agipcAggregationRounds <= 0
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:2296:       || agipcFineCorrectionIterations <= 0
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:2297:       || (agipcMapping != "matching" && agipcMapping != "warp-hash")
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:2298:       || agipcMaxLevels <= 0 || agipcMaxLevels > 16
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:2299:       || (agipcShadow && agipcGpuShadow))
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:2304:                     "AGIPC mapping must be matching or warp-hash with max levels in 1..16; "
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:2305:                     "AGIPC shadow modes are mutually "
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:2306:                     "exclusive and require positive threshold/rounds/correction iterations.\n";
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:2333:    agipc::configure_gpu_shadow(
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:2334:        agipcGpuShadow,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:2335:        agipcEdgeThreshold,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:2336:        agipcAggregationRounds,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:2337:        agipcGpuSolve,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:2338:        agipcFineCorrectionIterations,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:2339:        agipcDiagnostics,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:2340:        agipcMapping.c_str(),
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:2341:        agipcMaxLevels);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\gl_main.cu:2377:    agipc::release_gpu_shadow();
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\gl_main.cu:678:    ipc.Newton_solver_threshold = 1e-2;
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\gl_main.cu:679:    ipc.pcg_threshold           = 1e-4;
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\gl_main.cu:720:        infile >> ignoreToken >> ipc.pcg_threshold;
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\gl_main.cu:721:        infile >> ignoreToken >> ipc.Newton_solver_threshold;
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\gl_main.cu:1831:    metrics["solver"]           = runtime_options.solver == gipc::SolverMode::AGIPC
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\gl_main.cu:1832:                                      ? "agipc"
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\gl_main.cu:2115:        metrics["coarse_mapping_mismatches"] = result.coarse_mapping_mismatches;
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\linear_system\utils\spmv.h:52:                          int                           short_row_threshold);
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\linear_system\utils\spmv.cu:127:                                        int short_row_threshold)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\linear_system\utils\spmv.cu:180:    const bool use_reduction = is_valid && segment_length > short_row_threshold;
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\linear_system\utils\spmv.cu:279:                            int                           short_row_threshold)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\linear_system\utils\spmv.cu:298:                             short_row_threshold);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:7:#include "agipc/agipc_coarsening.cuh"
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:60:    if(agipc::gpu_shadow_enabled())
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:62:        const auto coarse = agipc::reduce_gpu_shadow(
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:64:        if(coarse.available)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:66:            printf("agipc_gpu_reduction_shadow: fine_blocks=%zu coarse_blocks=%zu "
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:67:                   "fine_triplets=%zu coarse_unique_triplets=%zu invalid_entries=%zu "
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:69:                   "converged=%d prolonged_dofs=%zu coarse_assembly_ms=%.6f "
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:70:                   "coarse_pcg_ms=%.6f prolongation_ms=%.6f\n",
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:71:                   coarse.fine_block_nodes,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:72:                   coarse.coarse_block_nodes,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:73:                   coarse.fine_triplets,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:74:                   coarse.coarse_unique_triplets,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:75:                   coarse.invalid_entries,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:76:                   coarse.coarse_pcg_iterations,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:77:                   coarse.initial_residual_norm,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:78:                   coarse.final_residual_norm,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:79:                   coarse.coarse_pcg_converged ? 1 : 0,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:80:                   coarse.prolonged_dofs,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:81:                   coarse.coarse_assembly_ms,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:82:                   coarse.coarse_pcg_ms,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:83:                   coarse.prolongation_ms);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:86:                               .back()["agipc_reduction_shadow"];
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:88:            shadow["fine_block_nodes"]       = coarse.fine_block_nodes;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:89:            shadow["coarse_block_nodes"]     = coarse.coarse_block_nodes;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:90:            shadow["fine_triplets"]          = coarse.fine_triplets;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:91:            shadow["coarse_unique_triplets"] = coarse.coarse_unique_triplets;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:92:            shadow["invalid_entries"]        = coarse.invalid_entries;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:93:            shadow["pcg_iterations"]         = coarse.coarse_pcg_iterations;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:94:            shadow["initial_residual_norm"]  = coarse.initial_residual_norm;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:95:            shadow["final_residual_norm"]    = coarse.final_residual_norm;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:96:            shadow["converged"]              = coarse.coarse_pcg_converged;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:97:            shadow["prolonged_dofs"]         = coarse.prolonged_dofs;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:98:            shadow["coarse_assembly_ms"]     = coarse.coarse_assembly_ms;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:99:            shadow["coarse_pcg_ms"]          = coarse.coarse_pcg_ms;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:100:            shadow["prolongation_ms"]        = coarse.prolongation_ms;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:102:        else if(coarse.skipped_insufficient_coarsening)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:104:            printf("agipc_gpu_reduction_shadow: skipped=1 reason=insufficient_reduction "
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:105:                   "fine_blocks=%zu coarse_blocks=%zu\n",
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:106:                   coarse.fine_block_nodes,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:107:                   coarse.coarse_block_nodes);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:110:                               .back()["agipc_reduction_shadow"];
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:113:            shadow["fine_block_nodes"] = coarse.fine_block_nodes;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:114:            shadow["coarse_block_nodes"] = coarse.coarse_block_nodes;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:115:            shadow["coarse_assembly_ms"] = 0.0;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:116:            shadow["coarse_pcg_ms"] = 0.0;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:129:    if(agipc::gpu_shadow_enabled())
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:131:        const auto correction = agipc::refine_gpu_shadow(
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:135:            agipc::gpu_fine_correction_max_iterations());
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:138:            printf("agipc_gpu_fine_correction_shadow: fine_dofs=%zu iterations=%zu "
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:141:                   "accepted=%d invalid_entries=%zu fine_correction_ms=%.6f\n",
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:151:                   correction.fine_correction_ms);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:154:                               .back()["agipc_fine_correction_shadow"];
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:155:            shadow["mode"]                    = "gpu_fine_correction_only";
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:165:            shadow["fine_correction_ms"]      = correction.fine_correction_ms;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:234:    size_t agipc_iterations = 0;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:235:    const bool used_agipc = agipc::copy_gpu_solution(
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:236:        m_x.data(), m_x.size(), &agipc_iterations);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:237:    auto iter = used_agipc ? static_cast<gipc::SizeT>(agipc_iterations)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:239:    if(agipc::gpu_solver_enabled())
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:243:                                 .back()["agipc_solver"];
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:245:        solver_stats["used"]       = used_agipc;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:247:        solver_stats["useful_coarsening"] = agipc::gpu_has_useful_coarsening();
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:248:        solver_stats["wasted_coarse_solve"] =
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:249:            agipc::gpu_has_useful_coarsening() && !used_agipc;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:250:        solver_stats["skip_reason"] = used_agipc
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:252:                                            : (agipc::gpu_has_useful_coarsening()
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:255:        printf("agipc_gpu_solver: requested=1 used=%d iterations=%zu fallback=%s\n",
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:256:               used_agipc ? 1 : 0,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\linear_system\global_linear_system.cu:258:               used_agipc ? "none" : "original_stiffgipc_pcg");
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\linear_system\linear_system\global_linear_system.cu:239:        const int threshold = m_spmv_mode == SpmvMode::Hybrid8 ? 8 : 16;
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\linear_system\linear_system\global_linear_system.cu:248:                               threshold);
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\linear_system\linear_system\global_linear_system.cu:317:        const int threshold = diagnostic_mode == SpmvMode::Hybrid8 ? 8 : 16;
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\linear_system\linear_system\global_linear_system.cu:326:                               threshold);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\solver\pcg_solver.cu:5:#include <agipc/agipc_coarsening.cuh>
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\solver\pcg_solver.cu:191:    if(agipc::gpu_diagnostics_enabled())
+.\实验十三\code\Stiff-GIPC\StiffGIPC\linear_system\solver\pcg_solver.cu:293:    if(agipc::gpu_diagnostics_enabled())
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cu:218:                             int*                _coarseSpaceTable,
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cu:266:    _coarseSpaceTable[idx + 0 * vertNum] = theLanePrefix;
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cu:272:                                 int*                _coarseSpaceTable,
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cu:325:        _coarseSpaceTable[idx] = theLanePrefix;
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cu:334:                                    int*                _coarseSpaceTable,
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cu:349:    unsigned int coarseIdx = _coarseSpaceTable[(level - 1) * vertNum + idx];
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cu:356:        unsigned int coarseConnect = _coarseSpaceTable[(level - 1) * vertNum + connect];
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cu:358:        if(coarseIdx / BANKSIZE == coarseConnect / BANKSIZE)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cu:360:            unsigned int off = coarseConnect % BANKSIZE;
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cu:397:        atomicOr(_nextConnectedMsk + coarseIdx, connMsk);
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cu:404:                                        int*                _coarseSpaceTable,
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cu:426:        unsigned int coarseIdx = _coarseSpaceTable[(level - 1) * vertNum + idx];
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cu:433:            unsigned int coarseConnect = _coarseSpaceTable[(level - 1) * vertNum + connect];
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cu:435:            if(coarseIdx / BANKSIZE == coarseConnect / BANKSIZE)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cu:437:                unsigned int off = coarseConnect % BANKSIZE;
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cu:474:            atomicOr(_nextConnectedMsk + coarseIdx, connMsk);
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cu:579:__global__ void _computeNextLevel(int*          _coarseSpaceTable,
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cu:588:    int next = _coarseSpaceTable[(level - 1) * number + idx];
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cu:589:    _coarseSpaceTable[(level)*number + idx] = _nextConnectMsk[next];
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cu:593:                                   __GEIGEN__::itable* _coarseTable,
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cu:624:    _coarseTable[idx] = ctable;
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cu:852:                                    const __GEIGEN__::itable* _coarseTable,
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cu:866:    __GEIGEN__::itable table    = _coarseTable[idx];
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cu:1133:                                              const int*    _pCoarseSpaceTable,
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cu:1158:        if(_pCoarseSpaceTable)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cu:1163:                        _pCoarseSpaceTable[collitionPairStartId[i] + (level - 1) * vertNum];
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cu:1196:        if(_pCoarseSpaceTable)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cu:1230:                if(_pCoarseSpaceTable)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cu:1235:                                _pCoarseSpaceTable[collitionPairStartId[i] + (level - 1) * vertNum];
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cu:1269:                if(_pCoarseSpaceTable)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cu:1293:                if(_pCoarseSpaceTable)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cu:1298:                                _pCoarseSpaceTable[collitionPairStartId[i] + (level - 1) * vertNum];
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cu:1332:                if(_pCoarseSpaceTable)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cu:1360:                if(_pCoarseSpaceTable)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cu:1365:                                _pCoarseSpaceTable[collitionPairStartId[i] + (level - 1) * vertNum];
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cu:1399:                if(_pCoarseSpaceTable)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cu:1422:                if(_pCoarseSpaceTable)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cu:1427:                                _pCoarseSpaceTable[collitionPairStartId[i] + (level - 1) * vertNum];
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cu:1461:                if(_pCoarseSpaceTable)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cu:1485:            if(_pCoarseSpaceTable)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cu:1490:                            _pCoarseSpaceTable[collitionPairStartId[i] + (level - 1) * vertNum];
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cu:1524:            if(_pCoarseSpaceTable)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cu:1611:                                               d_coarseSpaceTables,
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cu:1628:                                           d_coarseSpaceTables,
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cu:1649:                                                      d_coarseSpaceTables,
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cu:1665:                                                  d_coarseSpaceTables,
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cu:1691:        d_coarseSpaceTables, d_nextConnectMask, level, number);
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cu:1720:        d_denseLevel, d_coarseTable, d_goingNext, levelnum, number);
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cu:1746:                                                 int*          coarseTableSpace,
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cu:1757:                                                            coarseTableSpace,
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cu:1767:        connectionMsk, coarseTableSpace, _collisonPairs, level, collision_node_Offset, totalNodes, number);
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cu:1792:            BuildCollisionConnection(d_nextConnectMask, d_coarseSpaceTables, level, cpNum);
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cu:2195:        Z, d_multiLevelZ, d_coarseTable, d_real_map_partId, levelnum, number);
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cu:2197:    __collectFinalZ<<<numBlocks, blockSize>>>(Z, d_multiLevelZ, d_coarseTable, levelnum, number);
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cu:2305:    CUDA_SAFE_CALL(cudaMalloc((void**)&d_coarseTable, vertNum * sizeof(__GEIGEN__::itable)));
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cu:2306:    CUDA_SAFE_CALL(cudaMalloc((void**)&d_coarseSpaceTables,
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cu:2359:    CUDA_SAFE_CALL(cudaFree(d_coarseSpaceTables));
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cu:2360:    CUDA_SAFE_CALL(cudaFree(d_coarseTable));
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cu:218:                             int*                _coarseSpaceTable,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cu:266:    _coarseSpaceTable[idx + 0 * vertNum] = theLanePrefix;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cu:272:                                 int*                _coarseSpaceTable,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cu:325:        _coarseSpaceTable[idx] = theLanePrefix;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cu:334:                                    int*                _coarseSpaceTable,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cu:349:    unsigned int coarseIdx = _coarseSpaceTable[(level - 1) * vertNum + idx];
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cu:356:        unsigned int coarseConnect = _coarseSpaceTable[(level - 1) * vertNum + connect];
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cu:358:        if(coarseIdx / BANKSIZE == coarseConnect / BANKSIZE)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cu:360:            unsigned int off = coarseConnect % BANKSIZE;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cu:397:        atomicOr(_nextConnectedMsk + coarseIdx, connMsk);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cu:404:                                        int*                _coarseSpaceTable,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cu:426:        unsigned int coarseIdx = _coarseSpaceTable[(level - 1) * vertNum + idx];
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cu:433:            unsigned int coarseConnect = _coarseSpaceTable[(level - 1) * vertNum + connect];
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cu:435:            if(coarseIdx / BANKSIZE == coarseConnect / BANKSIZE)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cu:437:                unsigned int off = coarseConnect % BANKSIZE;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cu:474:            atomicOr(_nextConnectedMsk + coarseIdx, connMsk);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cu:579:__global__ void _computeNextLevel(int*          _coarseSpaceTable,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cu:588:    int next = _coarseSpaceTable[(level - 1) * number + idx];
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cu:589:    _coarseSpaceTable[(level)*number + idx] = _nextConnectMsk[next];
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cu:593:                                   __GEIGEN__::itable* _coarseTable,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cu:624:    _coarseTable[idx] = ctable;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cu:852:                                    const __GEIGEN__::itable* _coarseTable,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cu:866:    __GEIGEN__::itable table    = _coarseTable[idx];
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cu:1133:                                              const int*    _pCoarseSpaceTable,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cu:1158:        if(_pCoarseSpaceTable)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cu:1163:                        _pCoarseSpaceTable[collitionPairStartId[i] + (level - 1) * vertNum];
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cu:1196:        if(_pCoarseSpaceTable)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cu:1230:                if(_pCoarseSpaceTable)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cu:1235:                                _pCoarseSpaceTable[collitionPairStartId[i] + (level - 1) * vertNum];
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cu:1269:                if(_pCoarseSpaceTable)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cu:1293:                if(_pCoarseSpaceTable)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cu:1298:                                _pCoarseSpaceTable[collitionPairStartId[i] + (level - 1) * vertNum];
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cu:1332:                if(_pCoarseSpaceTable)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cu:1360:                if(_pCoarseSpaceTable)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cu:1365:                                _pCoarseSpaceTable[collitionPairStartId[i] + (level - 1) * vertNum];
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cu:1399:                if(_pCoarseSpaceTable)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cu:1422:                if(_pCoarseSpaceTable)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cu:1427:                                _pCoarseSpaceTable[collitionPairStartId[i] + (level - 1) * vertNum];
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cu:1461:                if(_pCoarseSpaceTable)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cu:1485:            if(_pCoarseSpaceTable)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cu:1490:                            _pCoarseSpaceTable[collitionPairStartId[i] + (level - 1) * vertNum];
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cu:1524:            if(_pCoarseSpaceTable)
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cu:1611:                                               d_coarseSpaceTables,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cu:1628:                                           d_coarseSpaceTables,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cu:1649:                                                      d_coarseSpaceTables,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cu:1665:                                                  d_coarseSpaceTables,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cu:1691:        d_coarseSpaceTables, d_nextConnectMask, level, number);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cu:1720:        d_denseLevel, d_coarseTable, d_goingNext, levelnum, number);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cu:1746:                                                 int*          coarseTableSpace,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cu:1757:                                                            coarseTableSpace,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cu:1767:        connectionMsk, coarseTableSpace, _collisonPairs, level, collision_node_Offset, totalNodes, number);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cu:1792:            BuildCollisionConnection(d_nextConnectMask, d_coarseSpaceTables, level, cpNum);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cu:2194:        Z, d_multiLevelZ, d_coarseTable, d_real_map_partId, levelnum, number);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cu:2196:    __collectFinalZ<<<numBlocks, blockSize>>>(Z, d_multiLevelZ, d_coarseTable, levelnum, number);
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cu:2304:    CUDA_SAFE_CALL(cudaMalloc((void**)&d_coarseTable, vertNum * sizeof(__GEIGEN__::itable)));
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cu:2305:    CUDA_SAFE_CALL(cudaMalloc((void**)&d_coarseSpaceTables,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cu:2358:    CUDA_SAFE_CALL(cudaFree(d_coarseSpaceTables));
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cu:2359:    CUDA_SAFE_CALL(cudaFree(d_coarseTable));
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cuh:27:    int*                d_coarseSpaceTables  = nullptr;
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cuh:32:    __GEIGEN__::itable* d_coarseTable        = nullptr;
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\MASPreconditioner.cuh:77:                                  int*          coarseTableSpace,
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cuh:27:    int*                d_coarseSpaceTables  = nullptr;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cuh:32:    __GEIGEN__::itable* d_coarseTable        = nullptr;
+.\实验十三\code\Stiff-GIPC\StiffGIPC\MASPreconditioner.cuh:77:                                  int*          coarseTableSpace,
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:46:                                 int*                _coarseSpaceTable,
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:93:    int*          d_coarse         = nullptr;
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:109:    CUDA_SAFE_CALL(cudaMalloc((void**)&d_coarse, valid_nodes * sizeof(int)));
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:136:    CUDA_SAFE_CALL(cudaMemset(d_coarse, 0xff, valid_nodes * sizeof(int)));
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:153:                                                                 d_coarse,
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:163:    std::vector<int>          coarse(valid_nodes);
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:171:    CUDA_SAFE_CALL(cudaMemcpy(coarse.data(),
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:172:                              d_coarse,
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:197:        const int expected_coarse = first_group ? 0 : 1;
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:200:        if(coarse[vertex] != expected_coarse)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:201:            ++result.coarse_mapping_mismatches;
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:202:        if(going_next[vertex] != padded_nodes + expected_coarse)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:209:                    && result.coarse_mapping_mismatches == 0
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:221:    CUDA_SAFE_CALL(cudaFree(d_coarse));
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:421:                             int*                _coarseSpaceTable,
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:473:    _coarseSpaceTable[idx + 0 * vertNum] = theLanePrefix;
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:479:                                 int*                _coarseSpaceTable,
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:537:        _coarseSpaceTable[idx] = theLanePrefix;
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:546:                                    int*                _coarseSpaceTable,
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:562:    unsigned int coarseIdx = _coarseSpaceTable[(level - 1) * vertNum + idx];
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:569:        unsigned int coarseConnect = _coarseSpaceTable[(level - 1) * vertNum + connect];
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:571:        if(coarseIdx / GPU_MAS_BANKSIZE == coarseConnect / GPU_MAS_BANKSIZE)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:573:            unsigned int off = coarseConnect % GPU_MAS_BANKSIZE;
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:614:        atomicOr(_nextConnectedMsk + coarseIdx, connMsk);
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:621:                                        int*                _coarseSpaceTable,
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:644:        unsigned int coarseIdx = _coarseSpaceTable[(level - 1) * vertNum + idx];
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:651:            unsigned int coarseConnect = _coarseSpaceTable[(level - 1) * vertNum + connect];
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:653:            if(coarseIdx / GPU_MAS_BANKSIZE == coarseConnect / GPU_MAS_BANKSIZE)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:655:                unsigned int off = coarseConnect % GPU_MAS_BANKSIZE;
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:696:            atomicOr(_nextConnectedMsk + coarseIdx, connMsk);
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:808:__global__ void _computeNextLevel(int*          _coarseSpaceTable,
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:817:    int next = _coarseSpaceTable[(level - 1) * number + idx];
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:818:    _coarseSpaceTable[(level)*number + idx] = _nextConnectMsk[next];
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:822:                                   __GEIGEN__::itable* _coarseTable,
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:853:    _coarseTable[idx] = ctable;
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:1067:                                    const __GEIGEN__::itable* _coarseTable,
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:1081:    __GEIGEN__::itable table    = _coarseTable[idx];
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:1348:                                              const int*    _pCoarseSpaceTable,
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:1373:        if(_pCoarseSpaceTable)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:1378:                        _pCoarseSpaceTable[collitionPairStartId[i] + (level - 1) * vertNum];
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:1411:        if(_pCoarseSpaceTable)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:1445:                if(_pCoarseSpaceTable)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:1450:                                _pCoarseSpaceTable[collitionPairStartId[i] + (level - 1) * vertNum];
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:1484:                if(_pCoarseSpaceTable)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:1508:                if(_pCoarseSpaceTable)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:1513:                                _pCoarseSpaceTable[collitionPairStartId[i] + (level - 1) * vertNum];
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:1547:                if(_pCoarseSpaceTable)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:1575:                if(_pCoarseSpaceTable)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:1580:                                _pCoarseSpaceTable[collitionPairStartId[i] + (level - 1) * vertNum];
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:1614:                if(_pCoarseSpaceTable)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:1637:                if(_pCoarseSpaceTable)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:1642:                                _pCoarseSpaceTable[collitionPairStartId[i] + (level - 1) * vertNum];
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:1676:                if(_pCoarseSpaceTable)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:1700:            if(_pCoarseSpaceTable)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:1705:                            _pCoarseSpaceTable[collitionPairStartId[i] + (level - 1) * vertNum];
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:1739:            if(_pCoarseSpaceTable)
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:1826:                                               d_coarseSpaceTables,
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:1843:                                           d_coarseSpaceTables,
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:1864:                                                      d_coarseSpaceTables,
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:1880:                                                  d_coarseSpaceTables,
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:1906:        d_coarseSpaceTables, d_nextConnectMask, level, number);
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:1935:        d_denseLevel, d_coarseTable, d_goingNext, levelnum, number);
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:1961:                                                 int*          coarseTableSpace,
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:1972:                                                            coarseTableSpace,
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:1982:        connectionMsk, coarseTableSpace, _collisonPairs, level, collision_node_Offset, totalNodes, number);
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:2006:            BuildCollisionConnection(d_nextConnectMask, d_coarseSpaceTables, level, cpNum);
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:2431:        Z, d_multiLevelZ, d_coarseTable, d_real_map_partId, levelnum, number);
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:2433:    __collectFinalZ<<<numBlocks, blockSize>>>(Z, d_multiLevelZ, d_coarseTable, levelnum, number);
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:2533:    std::vector<__GEIGEN__::itable> coarse_table(totalNodes);
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:2550:    CUDA_SAFE_CALL(cudaMemcpy(coarse_table.data(),
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:2551:                              d_coarseTable,
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:2552:                              coarse_table.size() * sizeof(__GEIGEN__::itable),
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:2654:            cluster = coarse_table[vertex].index[level - 1];
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:2703:    CUDA_SAFE_CALL(cudaMalloc((void**)&d_coarseTable, vertNum * sizeof(__GEIGEN__::itable)));
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:2704:    CUDA_SAFE_CALL(cudaMalloc((void**)&d_coarseSpaceTables,
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:2779:    CUDA_SAFE_CALL(cudaFree(d_coarseSpaceTables));
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cu:2780:    CUDA_SAFE_CALL(cudaFree(d_coarseTable));
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cuh:27:    int  coarse_mapping_mismatches = 0;
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cuh:46:    int*                d_coarseSpaceTables  = nullptr;
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cuh:51:    __GEIGEN__::itable* d_coarseTable        = nullptr;
+.\实验十三\code\Stiff-GIPC-c499-performance\StiffGIPC\TraditionalMAS32Preconditioner.cuh:96:                                  int*          coarseTableSpace,

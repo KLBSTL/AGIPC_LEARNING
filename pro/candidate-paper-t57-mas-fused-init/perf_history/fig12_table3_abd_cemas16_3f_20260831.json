@@ -1,0 +1,16 @@
+{
+  "run_id": "srbk_cemas16_hybrid_abd_3f",
+  "status": "PASS",
+  "source_head": "6c8079a2a33620341f664ac204767df3155d3128",
+  "artifact": "../../../outputs/stiffgipc_performance_reproduction/fig12/table3_chain_20260831/srbk_cemas16_hybrid_abd_3f/",
+  "time_total_ms": 811.347,
+  "lsolver_ms": 210.455,
+  "newton": 9,
+  "pcg": 169,
+  "linear_system_dof": 107514,
+  "dof_reduction_ratio": 1.5354372453819967,
+  "speedup_vs_legacy": 2.1782295368073092,
+  "finite_vertices": true,
+  "ground_penetration": 0.0,
+  "metrics_sha256": "77C9C4962A87F4B88DEB5A43B42A5215FB91BCB80262B156294BCB69902894F7"
+}

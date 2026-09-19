@@ -1,0 +1,42 @@
+{
+  "run_id": "fig12_table3_chain_20260831",
+  "status": "COMPLETE_WITH_NEGATIVE_RESULT",
+  "run_class": "SHORT_CHAIN_SINGLE_RUN",
+  "source_code_commit": "2cb88bfca51d3f9742dc86553a1d9c4d58b8abde",
+  "executable_sha256": "6FC3F02B16CE1FEC0102B0C9B0296E5AEA2CF57A19784C752BB94347156D1A96",
+  "contract": {
+    "scene": "paper-fig12-coupling-scaled",
+    "cloth": "129x129",
+    "bunny_count": 2,
+    "young_modulus": 5000000.0,
+    "dt": 0.01,
+    "frames": 3,
+    "repetitions": 1
+  },
+  "results": {
+    "legacy_gpu_mas32_fem_ms": 1767.3,
+    "srbk_gpu_mas32_fem_ms": 298711.0,
+    "srbk_cemas16_fem_ms": 883.403,
+    "srbk_cemas16_hybrid_abd_ms": 811.347,
+    "cemas16_speedup_vs_legacy": 2.0005592011799824,
+    "abd_chain_speedup_vs_legacy": 2.1782295368073092,
+    "abd_dof_reduction": 1.5354372453819967,
+    "abd_lsolver_speedup": 1.2355562946948278,
+    "abd_total_speedup": 1.0888103363912112
+  },
+  "negative_result": {
+    "configuration": "srbk+gpu-mas32+fem",
+    "speedup_vs_legacy": 0.005916420888417233,
+    "interpretation": "severe local TraditionalMAS32 pipeline regression retained; SpMV optimization is out of scope"
+  },
+  "correctness": {
+    "all_runs_completed": true,
+    "all_vertices_finite": true,
+    "maximum_ground_penetration": 0.0
+  },
+  "artifacts": {
+    "summary": "../../outputs/stiffgipc_performance_reproduction/fig12/table3_chain_20260831/table3_chain_summary.json",
+    "csv": "../../outputs/stiffgipc_performance_reproduction/fig12/table3_chain_20260831/table3_chain.csv",
+    "report": "../../reports/stiffgipc_performance_reproduction/P2_TABLE3_CHAIN.md"
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "run_id": "fig12_gpu_mas32_sm86_20260831",
+  "status": "COMPLETE_WITH_NEGATIVE_RESULT",
+  "source_commit": "2c582ee",
+  "branch": "stiffgipc/c499-performance-reproduction",
+  "executable_sha256": "61783AC33CAEE6F5FE33DFB5D3806C7B8AE52591145FCCCC2D99EB320682659F",
+  "fix": {
+    "kernel": "TraditionalMAS32::prepare_hessian_bcoo_sum_kernel",
+    "previous_block_threads": 1024,
+    "current_block_threads": 256,
+    "registers_per_thread": 82,
+    "sm86_register_limit_per_sm": 65536,
+    "previous_error": "cudaErrorLaunchOutOfResources (701)"
+  },
+  "performance": {
+    "gipc_simulation_ms": 2013.5159912109375,
+    "srbk_simulation_ms": 9256.92578125,
+    "gipc_over_srbk": 0.21751454411456286,
+    "gipc_pcg": 7590.0,
+    "srbk_pcg": 35639.0,
+    "gipc_ms_per_pcg": 0.2652853743360919,
+    "srbk_ms_per_pcg": 0.2597414568660737
+  },
+  "correctness": {
+    "gipc_exit_code": 0,
+    "srbk_exit_code": 0,
+    "gipc_finite_vertices": true,
+    "srbk_finite_vertices": true,
+    "gipc_ground_penetration": 0.0,
+    "srbk_ground_penetration": 0.0
+  },
+  "external_artifacts": {
+    "root": "../../../outputs/stiffgipc_performance_reproduction/fig12/p2_gpu_mas32_20260831_pair",
+    "summary": "summary.json",
+    "gipc_metrics_sha256": "9AE9B9091DA8BFAFF04BA200DAD7D0D8F6E7A3C9D85F78EE083EBC7B8C1C1B74",
+    "srbk_metrics_sha256": "9CCC10C881FD5D36AFF6F7B22669D30E43C2A58E988C53E62A03BE904BD10A52"
+  },
+  "note": "The single pair is deliberately not repeated. The end-to-end difference is dominated by different Newton/PCG counts, while time per PCG is similar."
+}

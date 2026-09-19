@@ -1,0 +1,15 @@
+{
+  "run_id": "srbk_gpu_mas32_fem_3f",
+  "status": "COMPLETE_WITH_NEGATIVE_RESULT",
+  "source_head": "6c8079a2a33620341f664ac204767df3155d3128",
+  "artifact": "../../../outputs/stiffgipc_performance_reproduction/fig12/table3_chain_20260831/srbk_gpu_mas32_fem_3f/",
+  "time_total_ms": 298711.0,
+  "lsolver_ms": 139118.0,
+  "newton": 9,
+  "pcg": 189,
+  "linear_system_dof": 165081,
+  "speedup_vs_legacy": 0.005916420888417233,
+  "finite_vertices": true,
+  "ground_penetration": 0.0,
+  "metrics_sha256": "70EAAF30F9009708AB360EC2FC45BEC2D351DF64944F7ADCC6A1246FB01BE151"
+}

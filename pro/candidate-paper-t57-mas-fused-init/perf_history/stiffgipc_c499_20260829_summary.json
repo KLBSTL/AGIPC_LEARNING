@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "status": "PASS",
+  "scene": "stiff-bunny-drop",
+  "tet_mesh": "bunny2.msh",
+  "fem_vertices": 19193,
+  "frames_per_run": 30,
+  "formal_runs": 3,
+  "warmup_frames": 1,
+  "young_modulus": 10000000.0,
+  "dt": 0.01,
+  "preconditioner": "MAS",
+  "build": "Release",
+  "cuda_architecture": 86,
+  "quadratic_bending": false,
+  "beta_kmin_early_stop": false,
+  "source_base": "c49982fac7767225c7775683734c89eb74081142",
+  "source_commit": "2ab5e40",
+  "executable_sha256": "1339BA6E9B2D5368607EC399347130A3DBA9B2576FF523B287ACAFA56E0FD31B",
+  "median": {
+    "simulation_time_ms": 14503.91413116455,
+    "simulation_ms_per_frame": 483.4638043721517,
+    "simulation_fps": 2.068407171243452,
+    "simulation_wall_time_ms": 14545.9504,
+    "external_wall_time_ms": 15516.9979,
+    "newton_iterations": 128.0,
+    "newton_per_frame": 4.266666666666667,
+    "pcg_iterations": 29527.0,
+    "pcg_per_newton": 230.6796875
+  },
+  "runs": [
+    {
+      "run_id": "run1",
+      "frames": 30,
+      "simulation_time_ms": 14043.512580871582,
+      "simulation_wall_time_ms": 14087.2603,
+      "external_wall_time_ms": 14996.6103,
+      "newton_iterations": 128,
+      "pcg_iterations": 29516.0,
+      "average_newton_per_frame": 4.266666666666667,
+      "average_pcg_per_newton": 230.59375,
+      "finite_vertices": true,
+      "ground_penetration": 0.0
+    },
+    {
+      "run_id": "run2",
+      "frames": 30,
+      "simulation_time_ms": 14503.91413116455,
+      "simulation_wall_time_ms": 14545.9504,
+      "external_wall_time_ms": 15516.9979,
+      "newton_iterations": 128,
+      "pcg_iterations": 29527.0,
+      "average_newton_per_frame": 4.266666666666667,
+      "average_pcg_per_newton": 230.6796875,
+      "finite_vertices": true,
+      "ground_penetration": 0.0
+    },
+    {
+      "run_id": "run3",
+      "frames": 30,
+      "simulation_time_ms": 15237.256782531738,
+      "simulation_wall_time_ms": 15281.4974,
+      "external_wall_time_ms": 16131.2724,
+      "newton_iterations": 128,
+      "pcg_iterations": 29534.0,
+      "average_newton_per_frame": 4.266666666666667,
+      "average_pcg_per_newton": 230.734375,
+      "finite_vertices": true,
+      "ground_penetration": 0.0
+    }
+  ],
+  "notes": [
+    "Newton count is the number of completed linear solves, not the zero-based printed k label.",
+    "This 19,193-vertex bunny benchmark is not Figure 23 and must not be compared as the same scene."
+  ],
+  "hardware": {
+    "gpu": "NVIDIA GeForce RTX 3070 Laptop GPU",
+    "vram_mib": 8192,
+    "driver": "581.57",
+    "cuda_toolkit": "13.0",
+    "os": "Windows"
+  }
+}

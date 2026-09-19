@@ -1,0 +1,14 @@
+{
+  "run_id": "legacy_gpu_mas32_fem_3f",
+  "status": "PASS",
+  "source_head": "6c8079a2a33620341f664ac204767df3155d3128",
+  "artifact": "../../../outputs/stiffgipc_performance_reproduction/fig12/table3_chain_20260831/legacy_gpu_mas32_fem_3f/",
+  "time_total_ms": 1767.3,
+  "lsolver_ms": 1097.64,
+  "newton": 9,
+  "pcg": 189,
+  "linear_system_dof": 165081,
+  "finite_vertices": true,
+  "ground_penetration": 0.0,
+  "metrics_sha256": "553E3E5B0C25F0F36D5908BF294589868FFA7BF62E13428DA43752256DF54B39"
+}

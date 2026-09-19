@@ -1,0 +1,124 @@
+#pragma once
+#include <list>
+#include <linear_system/utils/spmv.h>
+#include <linear_system/utils/converter.h>
+#include <linear_system/linear_system/linear_subsystem.h>
+#include <linear_system/linear_system/i_linear_system_solver.h>
+#include <linear_system/linear_system/i_preconditioner.h>
+#include <cuda_tools/cuda_all.h>
+#include <gipc/utils/json.h>
+
+
+namespace gipc
+{
+class GlobalLinearSystem
+{
+    template <typename T>
+    using U = std::unique_ptr<T>;
+    friend class IterativeSolver;
+    friend class IPreconditioner;
+    friend class ILinearSubsystem;
+    friend class LocalPreconditioner;
+
+  public:
+    GlobalLinearSystem() {}
+
+    ~GlobalLinearSystem();
+
+    static constexpr int BlockSize = 3;
+
+    template <typename T, typename... Args>
+    T& create(Args&&... args)
+    {
+        if constexpr(std::is_base_of_v<ILinearSubsystem, T>)
+        {
+            return static_cast<T&>(
+                _create_subsystem(std::make_unique<T>(std::forward<Args>(args)...)));
+        }
+        else if constexpr(std::is_base_of_v<IterativeSolver, T>)
+        {
+            return static_cast<T&>(
+                _create_solver(std::make_unique<T>(std::forward<Args>(args)...)));
+        }
+        else if constexpr(std::is_base_of_v<IPreconditioner, T>)
+        {
+            return static_cast<T&>(_create_preconditioner(
+                std::make_unique<T>(std::forward<Args>(args)...)));
+        }
+        else
+        {
+            CT_ASSERT(false, "Unknown type");
+        }
+    }
+
+    /**
+     * \brief solve the global linear system, using the specified solver
+     * 
+     * \details `solve_linear_system()` will:
+     * - build the global linear system from the subsystems
+     * - distribute the assembly assignments to the subsystems
+     * - solve the linear system using the specified solver
+     * - distribute the solution to the subsystems
+     */
+    gipc::SizeT solve_linear_system();
+
+    void spmv_mode(SpmvMode mode) { m_spmv_mode = mode; }
+    SpmvMode spmv_mode() const { return m_spmv_mode; }
+    void frozen_linear_diagnostics_path(std::string path)
+    {
+        m_frozen_linear_diagnostics_path = std::move(path);
+    }
+    bool frozen_linear_diagnostics_complete() const
+    {
+        return m_frozen_linear_diagnostics_complete;
+    }
+
+    Json replay_frozen_fine(const std::string& directory,const std::string& output);
+    Json               as_json() const;
+    GIPCTripletMatrix* gipc_global_triplet = nullptr;
+
+  private:
+    std::vector<U<ILinearSubsystem>> m_subsystems;
+    std::vector<DiagonalSubsystem*>  m_inner_subsystems;
+
+    std::vector<U<LocalPreconditioner>> m_local_preconditioners;
+    U<GlobalPreconditioner>             m_global_preconditioner;
+    U<IterativeSolver>                  m_solver;
+
+    cudatool::LinearSystemContext      m_context;
+    cudatool::DeviceDenseVector<Float> m_x;
+    cudatool::DeviceDenseVector<Float> m_b;
+
+    std::vector<SizeT> m_rhs_count_per_subsystem;
+    std::vector<SizeT> m_rhs_offset_per_subsystem;
+    std::vector<Float> m_accuracy_statisfied_per_subsystem;
+
+    size_t                         reserved_triplet_count = 0;
+    Spmv                           m_spmv;
+    SpmvMode                       m_spmv_mode = SpmvMode::SRBK;
+    Converter                      m_converter;
+    cudatool::DeviceDenseVector<Float> fake_y;
+    std::string                    m_frozen_linear_diagnostics_path;
+    bool                           m_frozen_linear_diagnostics_complete = false;
+    bool                           m_fine_preconditioner_ready = false;
+
+
+    cudatool::DeviceDenseVector<Float> m_guard_old,m_guard_trial,m_guard_r,m_guard_z,m_guard_p,m_guard_ap,m_guard_ax;
+    Json guarded_fine_correction(const double* prolonged,double prolonged_residual_squared);
+    bool build_linear_system();
+    void distribute_solution();
+    void apply_preconditioner(cudatool::DenseVectorView<Float>  z,
+                              cudatool::CDenseVectorView<Float> r);
+
+    void convert_new();
+    void run_frozen_linear_diagnostics();
+
+    void spmv(Float a, cudatool::CDenseVectorView<Float> x, Float b, cudatool::DenseVectorView<Float> y);
+
+    DiagonalSubsystem& _create_subsystem(U<DiagonalSubsystem>&& subsystem);
+
+    IterativeSolver& _create_solver(U<IterativeSolver>&& solver);
+    LocalPreconditioner& _create_preconditioner(U<LocalPreconditioner>&& preconditioner);
+    GlobalPreconditioner& _create_preconditioner(U<GlobalPreconditioner>&& preconditioner);
+};
+}  // namespace gipc

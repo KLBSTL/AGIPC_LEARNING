@@ -1,0 +1,38 @@
+[
+  {
+    "name": "ctest",
+    "arguments": [
+      "--output-on-failure"
+    ],
+    "exit_code": 0,
+    "process_wall_ms": 96.1789
+  },
+  {
+    "name": "agipc-self-test",
+    "arguments": [
+      "--agipc-self-test",
+      "--agipc-affine-basis",
+      "paper12",
+      "--agipc-coarse-pcg-batch",
+      "4"
+    ],
+    "exit_code": 0,
+    "process_wall_ms": 1110.3281
+  },
+  {
+    "name": "mas32-self-test",
+    "arguments": [
+      "--mas32-self-test"
+    ],
+    "exit_code": 0,
+    "process_wall_ms": 484.2954
+  },
+  {
+    "name": "spmv-self-test",
+    "arguments": [
+      "--spmv-self-test"
+    ],
+    "exit_code": 0,
+    "process_wall_ms": 359.6738
+  }
+]

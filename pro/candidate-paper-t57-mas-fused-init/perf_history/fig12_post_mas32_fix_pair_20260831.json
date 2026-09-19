@@ -1,0 +1,46 @@
+{
+  "run_id": "fig12_post_mas32_fix_pair_20260831",
+  "status": "FAIL_INFRASTRUCTURE",
+  "source_commit": "0ecfda4e88bf1af4fabd35d42a9b2c9a48a68c53",
+  "scope": "One Figure 12 single-frame GIPC/SRBK pair after MAS32 frozen-linear gates passed",
+  "result": "Both solvers completed the simulation frame, then crashed while printing the merged GlobalTimer tree before metrics JSON was written.",
+  "first_attempt": {
+    "gipc": {
+      "artifact": "../../../outputs/stiffgipc_performance_reproduction/fig12/post_mas32_fix_pair_20260831/gipc/",
+      "exit_code": -1073740791,
+      "process_wall_ms": 1286.9991,
+      "logged_average_frame_ms": 140.352875,
+      "stdout_sha256": "4C0EF110BCB9880CE61B3C5F2EAFEC5EE5FD681213F465F1308EF28882BDF435",
+      "metrics_bytes": 0
+    },
+    "srbk": {
+      "artifact": "../../../outputs/stiffgipc_performance_reproduction/fig12/post_mas32_fix_pair_20260831/srbk/",
+      "exit_code": -1073740791,
+      "process_wall_ms": 1192.2083,
+      "logged_average_frame_ms": 135.866013,
+      "stdout_sha256": "F1E89C151829852B9A2889297CA265CA0838DBA14E9C1FE62C04B3199538B273",
+      "metrics_bytes": 0
+    }
+  },
+  "allowed_retry": {
+    "gipc": {
+      "artifact": "../../../outputs/stiffgipc_performance_reproduction/fig12/post_mas32_fix_pair_20260831_retry/gipc/",
+      "exit_code": -1073740791,
+      "process_wall_ms": 1536.7995,
+      "logged_average_frame_ms": 139.784729,
+      "stdout_sha256": "10413C1D55D1D4119DBE9C0F66BEA5BB6F0D3C01CCD515F257C3C43292E53CA8",
+      "metrics_bytes": 0
+    },
+    "srbk": {
+      "artifact": "../../../outputs/stiffgipc_performance_reproduction/fig12/post_mas32_fix_pair_20260831_retry/srbk/",
+      "exit_code": -1073740791,
+      "process_wall_ms": 1236.7981,
+      "logged_average_frame_ms": 134.624817,
+      "stdout_sha256": "3761C805D2B657F4E9B38B2B2703F5C6ECA411465D8054C4DB5962A3FF25C477",
+      "metrics_bytes": 0
+    }
+  },
+  "failed_hypothesis": "Saturating the timer table name-column width did not change the failure location; that uncommitted trial was reverted.",
+  "performance_conclusion_allowed": false,
+  "note": "The logs show iteration k=2 and one completed frame for both solvers, but empty metrics and abnormal exit make the timing values diagnostic-only, not a valid speedup result. No further benchmark retry was performed."
+}

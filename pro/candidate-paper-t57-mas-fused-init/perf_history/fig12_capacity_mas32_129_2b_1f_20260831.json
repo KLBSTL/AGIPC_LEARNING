@@ -1,0 +1,15 @@
+{
+  "run_id": "capacity_mas32_129_2b_1f",
+  "status": "PASS_CAPACITY",
+  "source_head": "6c8079a2a33620341f664ac204767df3155d3128",
+  "executable_sha256": "6FC3F02B16CE1FEC0102B0C9B0296E5AEA2CF57A19784C752BB94347156D1A96",
+  "artifact": "../../../outputs/stiffgipc_performance_reproduction/fig12/table3_chain_20260831/capacity_mas32_129_2b_1f/",
+  "frames": 1,
+  "elapsed_seconds": 133.3171483,
+  "simulation_time_ms": 129050.3671875,
+  "newton": 3,
+  "pcg": 70,
+  "finite_vertices": true,
+  "ground_penetration": 0.0,
+  "metrics_sha256": "BFF37A4342BE210244EC23B63C75ED708B59A815A8E8B0649716BCC68E61B792"
+}

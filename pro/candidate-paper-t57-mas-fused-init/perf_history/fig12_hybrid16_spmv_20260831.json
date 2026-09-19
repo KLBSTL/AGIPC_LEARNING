@@ -1,0 +1,20 @@
+{
+  "run_id": "fig12_hybrid16_spmv_20260831",
+  "status": "COMPLETE_DIAGNOSTIC_NEGATIVE",
+  "source_commit": "2cb88bfca51d3f9742dc86553a1d9c4d58b8abde",
+  "executable_sha256": "6FC3F02B16CE1FEC0102B0C9B0296E5AEA2CF57A19784C752BB94347156D1A96",
+  "scope": "Hybrid threshold 16 on the Figure 12 first-frame first-Newton frozen Hessian; one numerical run and one Nsight Compute basic-set kernel launch",
+  "artifact": "../../../outputs/stiffgipc_performance_reproduction/fig12/hybrid_spmv_20260831/",
+  "numerical_gate": "PASS",
+  "spmv_relative_error": 1.4795364305231303e-16,
+  "pcg_iterations": 6,
+  "first_residual_divergence_iteration": -1,
+  "kernel_duration_us": 69.952,
+  "legacy_duration_us": 63.648,
+  "srbk_duration_us": 89.216,
+  "legacy_over_hybrid_speedup": 0.9098810612991767,
+  "srbk_over_hybrid_speedup": 1.2753888380603842,
+  "enabled_by_default": false,
+  "end_to_end_benchmark_run": false,
+  "decision": "NEGATIVE: threshold 16 is 21.6 percent faster than SRBK but still 9.9 percent slower than Legacy, so the frozen-kernel gate blocks end-to-end testing."
+}

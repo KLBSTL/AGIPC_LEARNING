@@ -1,0 +1,30 @@
+{
+  "archive_name": "AGIPC_current_T61_20260919.zip",
+  "created_local": "2026-09-19T17:47:22.3175791+08:00",
+  "mainline": "candidate-paper-t57-mas-fused-init plus T61 convergence diagnostics",
+  "algorithm_change": "none in T61; diagnostics only",
+  "cuda_graph_used": false,
+  "committed": false,
+  "pushed": false,
+  "formal_five_scene_benchmark": false,
+  "source_directory": "D:\\code\\StiffGIPC-3versions-20260819\\AGIPC-opt-e21d9ef\\candidate-paper-t57-mas-fused-init",
+  "source_file_count": 342,
+  "source_bytes": 74413022.0,
+  "current_executable_sha256": "4924fa502bb1a5ce4061501e6d3267d2d38747e4de086b7cfba19b111f07db1b",
+  "modified_source_sha256": "d436a5875d8385b71f5258b00a74518d4af3e428733d8b9df24a87241a25b6f0",
+  "report_sha256": "a05efc9c2110e7738aabe14df55009697720fa33cf065a539a13f4df45ce5d69",
+  "included_paths": [
+    "candidate-paper-t57-mas-fused-init",
+    "T60_T61_EXPERIMENT_REPORT_ZH_20260919.md",
+    "T59_PRIORITY_REANALYSIS_ZH.md",
+    "T60B_GPU_CSR_SORTED_DIAGNOSTIC_SUMMARY.json",
+    "T61_CONVERGENCE_DIAGNOSTIC_SUMMARY.json",
+    "results/candidate-paper-t60-mas-gpu-csr-paired-replay-r2/summary.json",
+    "results/candidate-paper-t60b-mas-gpu-csr-sorted-paired-replay-r1/summary.json",
+    "results/candidate-paper-t60c-mas-gpu-keysort-paired-replay-r1/summary.json",
+    "results/candidate-paper-t61-convergence-diagnostics-contact60-r1/metrics.json",
+    "results/candidate-paper-t61-convergence-diagnostics-contact60-r1/run_manifest.json",
+    "results/candidate-paper-t61-convergence-diagnostics-contact60-r1/commands.json",
+    "results/candidate-paper-t61-convergence-diagnostics-gates-r1/commands.json"
+  ]
+}
